@@ -12,14 +12,12 @@ const $ = (id) => document.getElementById(id);
 const scoreRows = $("scoreRows");
 const emptyState = $("emptyState");
 const timerModal = $("timerModal");
-const runnerName = $("runnerName");
 const runCategory = $("runCategory");
 const runPoints = $("runPoints");
 const timerDisplay = $("timerDisplay");
 const timerState = $("timerState");
 const startTimerButton = $("startTimerButton");
 const stopTimerButton = $("stopTimerButton");
-const nameHint = $("nameHint");
 const pointsHint = $("pointsHint");
 
 let channel;
@@ -77,7 +75,6 @@ function renderScores() {
   scoreRows.innerHTML = scores.map((score, index) => `
     <tr>
       <td>${String(index + 1).padStart(2, "0")}</td>
-      <td>${escapeHtml(score.name)}</td>
       <td>${state.category === "Sadlier Word Search" ? `${Number(score.points) || 0} pts` : "—"}</td>
       <td>${formatTime(score.time)}</td>
       <td>${escapeHtml(score.date)}</td>
@@ -130,7 +127,7 @@ function resetTimer() {
 
 function openTimer() {
   timerModal.classList.remove("hidden");
-  runnerName.focus();
+  runCategory.focus();
 }
 
 function closeTimer() {
@@ -147,21 +144,8 @@ startTimerButton.addEventListener("click", startTimer);
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
 document.addEventListener("keydown", (event) => { if (event.key === "Escape" && !state.timer.running) closeTimer(); });
 
-runnerName.addEventListener("input", () => {
-  runnerName.value = runnerName.value.replace(/[^a-zA-Z ]/g, "").slice(0, 10);
-  nameHint.textContent = "Letters and spaces only.";
-  nameHint.classList.remove("error");
-});
-
 $("runForm").addEventListener("submit", (event) => {
   event.preventDefault();
-  const name = runnerName.value.trim().replace(/ +/g, " ");
-  if (!/^[a-zA-Z]+(?: [a-zA-Z]+)*$/.test(name) || name.length > 10) {
-    nameHint.textContent = "Enter 1–10 letters (spaces are okay).";
-    nameHint.classList.add("error");
-    runnerName.focus();
-    return;
-  }
   if (!state.timer.running) return;
   const points = Number.parseInt(runPoints.value, 10);
   if (!Number.isInteger(points) || points < 0 || points > 999999) {
@@ -174,14 +158,14 @@ $("runForm").addEventListener("submit", (event) => {
   window.clearInterval(state.timer.interval);
   state.timer.running = false;
   const category = runCategory.value;
-  const score = { name, points, time: Math.max(1, Math.round(state.timer.elapsed)), date: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) };
+  const score = { points, time: Math.max(1, Math.round(state.timer.elapsed)), date: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) };
   state.scores[category] = [...(state.scores[category] || []), score].sort((a, b) => category === "Sadlier Word Search" ? (b.points - a.points || a.time - b.time) : a.time - b.time).slice(0, 100);
   persistScores();
   setCategory(category);
-  timerState.textContent = category === "Sadlier Word Search" ? `Saved ${points} points for ${name}.` : `Saved ${formatTime(score.time)} for ${name}.`;
+  timerState.textContent = category === "Sadlier Word Search" ? `Saved ${points} points.` : `Saved ${formatTime(score.time)}.`;
   startTimerButton.disabled = false;
   stopTimerButton.disabled = true;
-  window.setTimeout(() => { closeTimer(); runnerName.value = ""; runPoints.value = "0"; }, 850);
+  window.setTimeout(() => { closeTimer(); runPoints.value = "0"; }, 850);
 });
 
 $("clearButton").addEventListener("click", () => {
