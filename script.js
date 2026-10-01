@@ -62,6 +62,7 @@ document.querySelectorAll(".category-tab").forEach((button) => button.addEventLi
 runMode.addEventListener("change", () => setMode(runMode.value));
 unitFilter.addEventListener("change", () => { state.unitFilter = unitFilter.value; renderScores(); });
 searchInput.addEventListener("input", () => { state.search = searchInput.value.trim(); renderScores(); });
+$("searchButton").addEventListener("click", () => { state.search = searchInput.value.trim(); renderScores(); searchInput.focus(); });
 sortFilter.addEventListener("change", () => { state.sortBy = sortFilter.value; renderScores(); });
 
 function updateTimer() { if (state.timer.running) state.timer.elapsed = performance.now() - state.timer.startedAt; timerDisplay.textContent = formatTime(state.timer.elapsed); }
@@ -87,12 +88,5 @@ runnerName.addEventListener("input", () => { runnerName.value = runnerName.value
 $("runForm").addEventListener("submit", (event) => { event.preventDefault(); if (!state.timer.running) return; logRun(); window.setTimeout(() => { closeTimer(); runnerName.value = ""; runPoints.value = "0"; }, 850); });
 $("clearButton").addEventListener("click", () => { if (!state.scores[state.mode]?.length || !window.confirm(`Clear all ${state.mode} scores?`)) return; state.scores[state.mode] = []; saveLocal(); renderScores(); });
 window.addEventListener("pagehide", () => { if (state.timer.running) logRun(); });
-
-function downloadJson(data, filename) { const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
-function openDevPanel() { $("devPanel").classList.remove("hidden"); }
-$("settingsButton").addEventListener("click", openDevPanel); $("devClose").addEventListener("click", () => $("devPanel").classList.add("hidden"));
-$("exportButton").addEventListener("click", () => downloadJson({ version: 1, exportedAt: new Date().toISOString(), scores: state.scores }, `sadlier-leaderboard-${new Date().toISOString().slice(0, 10)}.json`));
-$("importButton").addEventListener("click", () => $("importFile").click());
-$("importFile").addEventListener("change", async (event) => { const file = event.target.files?.[0]; if (!file) return; try { const data = JSON.parse(await file.text()); if (!data.scores || typeof data.scores !== "object") throw new Error("Invalid backup"); state.scores = data.scores; saveLocal(); renderScores(); const uploads = Object.entries(state.scores).flatMap(([mode, scores]) => (scores || []).map((score) => pushScore(score, mode))); await Promise.all(uploads); setSyncText("Backup imported to cloud"); } catch (_) { window.alert("That file is not a valid Sadlier Leaderboard backup."); } event.target.value = ""; });
 
 applyTheme(localStorage.getItem(THEME_KEY) || "dark"); renderScores(); setMode(state.mode); updateTimer(); pullCloudScores();

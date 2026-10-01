@@ -14,7 +14,7 @@
         <span class="brand-mark">LB</span>
         <span>LEADERBOARD<span class="brand-dot">.</span></span>
       </a>
-      <div class="header-actions"><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light mode">☼</button><button class="settings-button" id="settingsButton" type="button" aria-label="Open organizer settings">⚙</button><div class="sync-status" aria-live="polite"><span class="sync-dot"></span><span id="syncText">Cloud sync connecting</span></div></div>
+      <div class="header-actions"><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to light mode">☼</button><div class="sync-status" aria-live="polite"><span class="sync-dot"></span><span id="syncText">Cloud sync connecting</span></div></div>
     </header>
 
     <section class="hero">
@@ -40,9 +40,9 @@
       </nav>
 
       <div class="search-toolbar">
-        <div class="search-box"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search runners..." aria-label="Search runners" /></div>
-        <label class="toolbar-control" for="unitFilter">Unit<select id="unitFilter"><option value="all">All units</option></select></label>
-        <label class="toolbar-control" for="sortFilter">Sort<select id="sortFilter"><option value="rank">Rank</option><option value="time">Time</option></select></label>
+        <div class="amazon-search"><select aria-label="Search field"><option>All</option></select><input id="searchInput" type="search" placeholder="Search runners or units" aria-label="Search runners or units" /><button id="searchButton" type="button" aria-label="Search">⌕</button></div>
+        <select class="filter-select" id="unitFilter" aria-label="Filter by unit"><option value="all">All units</option></select>
+        <select class="filter-select" id="sortFilter" aria-label="Sort leaderboard"><option value="rank">Rank</option><option value="time">Time</option></select>
       </div>
       <div class="board-meta"><span id="modeLabel">In Order</span><span id="scoreCount">0 runs</span></div>
       <div class="score-table-wrap">
@@ -98,15 +98,6 @@
       </form>
     </div>
   </div>
-  <aside class="dev-panel hidden" id="devPanel" aria-label="Organizer tools">
-    <button class="dev-close" id="devClose" type="button" aria-label="Close organizer tools">×</button>
-    <p class="eyebrow">ORGANIZER TOOLS</p>
-    <h2>Data backup</h2>
-    <p>Export this leaderboard to a JSON file, or import a backup on another device.</p>
-    <div class="dev-actions"><button class="secondary-button" id="exportButton" type="button">Export data</button><button class="secondary-button" id="importButton" type="button">Import data</button></div>
-    <input id="importFile" type="file" accept="application/json,.json" hidden />
-    <p class="dev-sync-note">New runs sync to everyone through Supabase. Export/import is a backup if the cloud table is unavailable.</p>
-  </aside>
   <script src="script.js"></script>
 </body>
 </html>
