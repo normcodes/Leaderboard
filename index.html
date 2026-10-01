@@ -39,7 +39,12 @@
         <button class="category-tab" type="button" data-mode="Out of Order">Out of Order</button>
       </nav>
 
-      <div class="board-meta"><span id="modeLabel">In Order</span><div class="board-filters"><label for="unitFilter">Unit</label><select id="unitFilter"><option value="all">All units</option></select><span id="scoreCount">0 runs</span></div></div>
+      <div class="search-toolbar">
+        <div class="search-box"><span aria-hidden="true">⌕</span><input id="searchInput" type="search" placeholder="Search runners..." aria-label="Search runners" /></div>
+        <label class="toolbar-control" for="unitFilter">Unit<select id="unitFilter"><option value="all">All units</option></select></label>
+        <label class="toolbar-control" for="sortFilter">Sort<select id="sortFilter"><option value="rank">Rank</option><option value="time">Time</option></select></label>
+      </div>
+      <div class="board-meta"><span id="modeLabel">In Order</span><span id="scoreCount">0 runs</span></div>
       <div class="score-table-wrap">
         <table class="score-table">
           <thead><tr><th scope="col">RANK</th><th scope="col">RUNNER</th><th scope="col">POINTS</th><th scope="col">TIME</th><th scope="col">UNIT</th><th scope="col">DATE</th></tr></thead>
@@ -93,7 +98,6 @@
       </form>
     </div>
   </div>
-  <button class="dev-tab" id="devTab" type="button" aria-label="Open organizer tools">⚙</button>
   <aside class="dev-panel hidden" id="devPanel" aria-label="Organizer tools">
     <button class="dev-close" id="devClose" type="button" aria-label="Close organizer tools">×</button>
     <p class="eyebrow">ORGANIZER TOOLS</p>

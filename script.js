@@ -7,10 +7,10 @@ const CLOUD_TABLE = `${SUPABASE_URL}/rest/v1/leaderboard_runs`;
 const modes = ["In Order", "Out of Order"];
 const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?productId=5&programId=241&subjectId=1&gradeId=10&programTOCId=2658&programSeriesId=1&hash=dW5kZWZpbmVk";
 
-const state = { mode: modes[0], unitFilter: "all", scores: loadScores(), timer: { startedAt: null, elapsed: 0, interval: null, running: false } };
+const state = { mode: modes[0], unitFilter: "all", sortBy: "rank", search: "", scores: loadScores(), timer: { startedAt: null, elapsed: 0, interval: null, running: false } };
 const $ = (id) => document.getElementById(id);
 const scoreRows = $("scoreRows"), emptyState = $("emptyState"), timerModal = $("timerModal");
-const runnerName = $("runnerName"), runMode = $("runMode"), runUnit = $("runUnit"), runPoints = $("runPoints"), unitFilter = $("unitFilter");
+const runnerName = $("runnerName"), runMode = $("runMode"), runUnit = $("runUnit"), runPoints = $("runPoints"), unitFilter = $("unitFilter"), searchInput = $("searchInput"), sortFilter = $("sortFilter");
 const timerDisplay = $("timerDisplay"), timerState = $("timerState"), startTimerButton = $("startTimerButton"), stopTimerButton = $("stopTimerButton"), nameHint = $("nameHint"), pointsHint = $("pointsHint");
 
 for (let unit = 1; unit <= 15; unit += 1) { runUnit.add(new Option(`Unit ${unit}`, String(unit))); unitFilter.add(new Option(`Unit ${unit}`, String(unit))); }
@@ -47,11 +47,12 @@ async function pushScore(score, mode) {
 setInterval(pullCloudScores, 4000);
 
 function formatTime(milliseconds) { const safe = Math.max(0, Math.round(milliseconds)); return `${String(Math.floor(safe / 60000)).padStart(2, "0")}:${String(Math.floor((safe % 60000) / 1000)).padStart(2, "0")}.${String(safe % 1000).padStart(3, "0")}`; }
-function sortScores(scores) { return [...scores].sort((a, b) => (Number(b.points) || 0) - (Number(a.points) || 0) || a.time - b.time); }
+function sortScores(scores) { return [...scores].sort((a, b) => state.sortBy === "time" ? a.time - b.time || (Number(b.points) || 0) - (Number(a.points) || 0) : (Number(b.points) || 0) - (Number(a.points) || 0) || a.time - b.time); }
 function escapeHtml(value) { return String(value ?? "").replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c])); }
 function renderScores() {
   let scores = sortScores(state.scores[state.mode] || []);
   if (state.unitFilter !== "all") scores = scores.filter((score) => String(score.unit) === state.unitFilter);
+  if (state.search) { const query = state.search.toLowerCase(); scores = scores.filter((score) => `${score.name} unit ${score.unit}`.toLowerCase().includes(query)); }
   $("modeLabel").textContent = state.mode; $("scoreCount").textContent = `${scores.length} ${scores.length === 1 ? "run" : "runs"}`;
   scoreRows.innerHTML = scores.map((score, index) => `<tr><td>${String(index + 1).padStart(2, "0")}</td><td>${escapeHtml(score.name)}</td><td>${Number(score.points) || 0} pts</td><td>${formatTime(score.time)}</td><td>Unit ${escapeHtml(score.unit)}</td><td>${escapeHtml(score.date)}</td></tr>`).join("");
   emptyState.classList.toggle("hidden", scores.length > 0);
@@ -60,6 +61,8 @@ function setMode(mode) { if (!modes.includes(mode)) return; state.mode = mode; r
 document.querySelectorAll(".category-tab").forEach((button) => button.addEventListener("click", () => setMode(button.dataset.mode)));
 runMode.addEventListener("change", () => setMode(runMode.value));
 unitFilter.addEventListener("change", () => { state.unitFilter = unitFilter.value; renderScores(); });
+searchInput.addEventListener("input", () => { state.search = searchInput.value.trim(); renderScores(); });
+sortFilter.addEventListener("change", () => { state.sortBy = sortFilter.value; renderScores(); });
 
 function updateTimer() { if (state.timer.running) state.timer.elapsed = performance.now() - state.timer.startedAt; timerDisplay.textContent = formatTime(state.timer.elapsed); }
 function startTimer() { if (state.timer.running) return; state.timer.startedAt = performance.now() - state.timer.elapsed; state.timer.running = true; startTimerButton.disabled = true; stopTimerButton.disabled = false; timerState.textContent = "Timer running — find the words!"; state.timer.interval = window.setInterval(updateTimer, 16); }
@@ -87,7 +90,7 @@ window.addEventListener("pagehide", () => { if (state.timer.running) logRun(); }
 
 function downloadJson(data, filename) { const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
 function openDevPanel() { $("devPanel").classList.remove("hidden"); }
-$("devTab").addEventListener("click", openDevPanel); $("settingsButton").addEventListener("click", openDevPanel); $("devClose").addEventListener("click", () => $("devPanel").classList.add("hidden"));
+$("settingsButton").addEventListener("click", openDevPanel); $("devClose").addEventListener("click", () => $("devPanel").classList.add("hidden"));
 $("exportButton").addEventListener("click", () => downloadJson({ version: 1, exportedAt: new Date().toISOString(), scores: state.scores }, `sadlier-leaderboard-${new Date().toISOString().slice(0, 10)}.json`));
 $("importButton").addEventListener("click", () => $("importFile").click());
 $("importFile").addEventListener("change", async (event) => { const file = event.target.files?.[0]; if (!file) return; try { const data = JSON.parse(await file.text()); if (!data.scores || typeof data.scores !== "object") throw new Error("Invalid backup"); state.scores = data.scores; saveLocal(); renderScores(); const uploads = Object.entries(state.scores).flatMap(([mode, scores]) => (scores || []).map((score) => pushScore(score, mode))); await Promise.all(uploads); setSyncText("Backup imported to cloud"); } catch (_) { window.alert("That file is not a valid Sadlier Leaderboard backup."); } event.target.value = ""; });
