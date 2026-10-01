@@ -5,7 +5,7 @@ const SUPABASE_URL = "https://aqogklmsnyoeiifpjrbw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_RHQZ0Hie-jkjHVyrIDrOBQ_35g-dcNR";
 const CLOUD_TABLE = `${SUPABASE_URL}/rest/v1/leaderboard_runs`;
 const modes = ["In Order", "Out of Order"];
-const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?productId=4&programId=240&subjectId=1&gradeId=9&programSeriesId=1&hash=dW5kZWZpbmVk";
+const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?productId=5&programId=241&subjectId=1&gradeId=10&programTOCId=2658&programSeriesId=1&hash=dW5kZWZpbmVk";
 
 const state = { mode: modes[0], unitFilter: "all", scores: loadScores(), timer: { startedAt: null, elapsed: 0, interval: null, running: false } };
 const $ = (id) => document.getElementById(id);
@@ -86,7 +86,8 @@ $("clearButton").addEventListener("click", () => { if (!state.scores[state.mode]
 window.addEventListener("pagehide", () => { if (state.timer.running) logRun(); });
 
 function downloadJson(data, filename) { const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }); const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = filename; link.click(); URL.revokeObjectURL(link.href); }
-$("devTab").addEventListener("click", () => $("devPanel").classList.remove("hidden")); $("devClose").addEventListener("click", () => $("devPanel").classList.add("hidden"));
+function openDevPanel() { $("devPanel").classList.remove("hidden"); }
+$("devTab").addEventListener("click", openDevPanel); $("settingsButton").addEventListener("click", openDevPanel); $("devClose").addEventListener("click", () => $("devPanel").classList.add("hidden"));
 $("exportButton").addEventListener("click", () => downloadJson({ version: 1, exportedAt: new Date().toISOString(), scores: state.scores }, `sadlier-leaderboard-${new Date().toISOString().slice(0, 10)}.json`));
 $("importButton").addEventListener("click", () => $("importFile").click());
 $("importFile").addEventListener("change", async (event) => { const file = event.target.files?.[0]; if (!file) return; try { const data = JSON.parse(await file.text()); if (!data.scores || typeof data.scores !== "object") throw new Error("Invalid backup"); state.scores = data.scores; saveLocal(); renderScores(); const uploads = Object.entries(state.scores).flatMap(([mode, scores]) => (scores || []).map((score) => pushScore(score, mode))); await Promise.all(uploads); setSyncText("Backup imported to cloud"); } catch (_) { window.alert("That file is not a valid Sadlier Leaderboard backup."); } event.target.value = ""; });
