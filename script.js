@@ -80,13 +80,10 @@ function logRun() {
   timerState.textContent = `Saved ${formatTime(score.time)} for ${name}.`; startTimerButton.disabled = false; stopTimerButton.disabled = true;
 }
 
-function applyTheme(theme) { document.body.classList.toggle("light-mode", theme === "light"); $("themeToggle").textContent = theme === "light" ? "☾" : "☼"; $("themeToggle").setAttribute("aria-label", theme === "light" ? "Switch to dark mode" : "Switch to light mode"); localStorage.setItem(THEME_KEY, theme); }
-$("themeToggle").addEventListener("click", () => applyTheme(document.body.classList.contains("light-mode") ? "dark" : "light"));
 $("openTimerButton").addEventListener("click", openTimer); $("closeTimerButton").addEventListener("click", closeTimer); $("resetTimerButton").addEventListener("click", resetTimer); $("openSadlierButton").addEventListener("click", () => window.open(SADLIER_URL, "_blank", "noopener,noreferrer")); startTimerButton.addEventListener("click", startTimer);
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); }); document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeTimer(); });
 runnerName.addEventListener("input", () => { runnerName.value = runnerName.value.replace(/[^a-zA-Z ]/g, "").slice(0, 10); nameHint.textContent = "Letters and spaces only."; nameHint.classList.remove("error"); });
 $("runForm").addEventListener("submit", (event) => { event.preventDefault(); if (!state.timer.running) return; logRun(); window.setTimeout(() => { closeTimer(); runnerName.value = ""; runPoints.value = "0"; }, 850); });
-$("clearButton").addEventListener("click", () => { if (!state.scores[state.mode]?.length || !window.confirm(`Clear all ${state.mode} scores?`)) return; state.scores[state.mode] = []; saveLocal(); renderScores(); });
 window.addEventListener("pagehide", () => { if (state.timer.running) logRun(); });
 
-applyTheme(localStorage.getItem(THEME_KEY) || "dark"); renderScores(); setMode(state.mode); updateTimer(); pullCloudScores();
+renderScores(); setMode(state.mode); updateTimer(); pullCloudScores();
