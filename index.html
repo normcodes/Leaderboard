@@ -32,7 +32,7 @@
       </nav>
 
       <div class="search-toolbar">
-        <div class="amazon-search"><select aria-label="Search field"><option>All</option></select><input id="searchInput" type="search" placeholder="Search runners or units" aria-label="Search runners or units" /><button id="searchButton" type="button" aria-label="Search">⌕</button></div>
+        <div class="amazon-search"><select aria-label="Search field"><option>All</option></select><input id="searchInput" type="search" placeholder="Search runners or units" aria-label="Search runners or units" /><button id="searchButton" type="button" aria-label="Search"><span class="search-icon" aria-hidden="true"></span></button></div>
         <select class="filter-select" id="unitFilter" aria-label="Filter by unit"><option value="all">All units</option></select>
         <select class="filter-select" id="sortFilter" aria-label="Sort leaderboard"><option value="rank">Rank</option><option value="time">Time</option></select>
       </div>
@@ -47,47 +47,70 @@
       <p class="sync-note">Highest points rank first. Fastest time breaks ties. Runs sync to everyone when cloud sync is connected.</p>
     </section>
 
-    <footer><span>SADLIER LEADERBOARD</span><span>Make your best time count.</span><span class="sync-status" aria-live="polite"><span class="sync-dot"></span><span id="syncText">Cloud sync connecting</span></span></footer>
+    <footer><div class="footer-main"><span>SADLIER LEADERBOARD</span><button class="settings-button" id="openSettingsButton" type="button" aria-expanded="false" aria-controls="settingsPanel">Settings</button></div><span>Make your best time count.</span><span class="sync-status" aria-live="polite"><span class="sync-dot"></span><span id="syncText">Cloud sync connecting</span></span></footer>
   </main>
 
   <div class="modal-backdrop hidden" id="timerModal" role="dialog" aria-modal="true" aria-labelledby="timerTitle">
     <div class="timer-modal">
       <button class="close-button" id="closeTimerButton" type="button" aria-label="Close timer">×</button>
-      <p class="eyebrow">NEW SADLIER RUN</p>
-      <h2 id="timerTitle">Ready when you are.</h2>
-      <p class="modal-copy">Enter your name, choose the mode and unit, then open Sadlier Level 2.</p>
+      <div id="modalIntro">
+        <p class="eyebrow">NEW SADLIER RUN</p>
+        <h2 id="timerTitle">Ready when you are.</h2>
+        <p class="modal-copy">Enter your name, choose In Order or Out of Order and select a unit. Points are entered after you stop.</p>
+      </div>
 
       <form id="runForm" novalidate>
-        <label for="runnerName">Runner name <span>10 letters max</span></label>
-        <input id="runnerName" name="runnerName" type="text" maxlength="10" autocomplete="off" placeholder="YOUR NAME" required />
-        <p class="field-hint" id="nameHint">Letters and spaces only.</p>
+        <div id="setupFields">
+          <label for="runnerName">Runner name <span>10 letters max</span></label>
+          <input id="runnerName" name="runnerName" type="text" maxlength="10" autocomplete="off" placeholder="YOUR NAME" required />
+          <p class="field-hint" id="nameHint">Letters and spaces only.</p>
 
-        <div class="form-grid">
-          <div>
-            <label for="runMode">Mode</label>
-            <select id="runMode" name="runMode"><option>In Order</option><option>Out of Order</option></select>
+          <div class="form-grid">
+            <div>
+              <label for="runMode">Mode</label>
+              <select id="runMode" name="runMode"><option>In Order</option><option>Out of Order</option></select>
+            </div>
+            <div>
+              <label for="runUnit">Unit</label>
+              <select id="runUnit" name="runUnit"></select>
+            </div>
           </div>
-          <div>
-            <label for="runUnit">Unit</label>
-            <select id="runUnit" name="runUnit"></select>
+
+          <div class="sadlier-actions">
+            <button class="secondary-button" id="openSadlierButton" type="button">Open Sadlier Level 2</button>
+            <button class="primary-button" id="startTimerButton" type="button"><span class="play-icon">▶</span> Start after Restart</button>
           </div>
         </div>
 
-        <label for="runPoints">Points</label>
-        <input id="runPoints" name="runPoints" type="number" min="0" max="999999" step="1" inputmode="numeric" placeholder="0" value="0" required />
-        <p class="field-hint" id="pointsHint">Enter the points you earned.</p>
+        <section class="run-stage hidden" id="activeRunSection" aria-live="polite">
+          <p class="run-phase">RUN IN PROGRESS</p>
+          <div class="timer-display" id="timerDisplay">00:00.000</div>
+          <p class="timer-state" id="timerState">Timer running — find the words!</p>
+          <button class="stop-button" id="stopTimerButton" type="button">STOP</button>
+        </section>
 
-        <div class="sadlier-actions">
-          <button class="secondary-button" id="openSadlierButton" type="button">Open Sadlier Level 2</button>
-          <button class="primary-button" id="startTimerButton" type="button"><span class="play-icon">▶</span> Start after Restart</button>
-        </div>
-        <div class="timer-display" id="timerDisplay">00:00.000</div>
-        <p class="timer-state" id="timerState">Open Word Search, click Restart, then start the timer.</p>
-        <div class="timer-actions">
+        <section class="finish-stage hidden" id="finishRunSection" aria-live="polite">
+          <p class="run-phase">TIME RECORDED</p>
+          <div class="recorded-time" id="recordedTime">00:00.000</div>
+          <label for="runPoints">Points</label>
+          <input id="runPoints" name="runPoints" type="number" min="0" max="999999" step="1" inputmode="numeric" placeholder="Enter points" required />
+          <p class="field-hint" id="pointsHint">Enter the points you earned, then save your run.</p>
+          <button class="primary-button save-button" id="saveRunButton" type="submit">Save</button>
+        </section>
+
+        <div class="timer-actions" id="prestartActions">
           <button class="secondary-button" id="resetTimerButton" type="button">Reset</button>
-          <button class="primary-button" id="stopTimerButton" type="submit" disabled>Stop &amp; save</button>
         </div>
       </form>
+    </div>
+  </div>
+  <div class="settings-panel hidden" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="settings-card">
+      <button class="close-button" id="closeSettingsButton" type="button" aria-label="Close settings">×</button>
+      <p class="eyebrow">SETTINGS</p>
+      <h2 id="settingsTitle">Organizer controls</h2>
+      <p class="settings-copy">Clear saved leaderboard scores from this site. A passcode is required.</p>
+      <button class="secondary-button clear-button" id="clearScoresButton" type="button">Clear scores</button>
     </div>
   </div>
   <script src="script.js"></script>
