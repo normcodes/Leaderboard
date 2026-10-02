@@ -26,10 +26,11 @@ const emptyState = $("emptyState");
 const timerModal = $("timerModal");
 const settingsPanel = $("settingsPanel");
 const openSettingsButton = $("openSettingsButton");
-const themeToggle = $("themeToggle");
 const darkThemeButton = $("darkThemeButton");
 const lightThemeButton = $("lightThemeButton");
 const defaultNameInput = $("defaultName");
+const clearScoresPassword = $("clearScoresPassword");
+const clearScoresHint = $("clearScoresHint");
 const runnerName = $("runnerName");
 const runMode = $("runMode");
 const runUnit = $("runUnit");
@@ -249,13 +250,20 @@ function updateTimer() {
 }
 
 function validRunnerName(name) {
-  return /^[a-zA-Z]+(?: [a-zA-Z]+)*$/.test(name) && name.length <= 30;
+  return /^(?:[\p{L}\p{Extended_Pictographic}\u200d\ufe0f])+$/u.test(name) && [...name].length <= 30;
+}
+
+function cleanRunnerName(value) {
+  return [...String(value)]
+    .filter((character) => /[\p{L}\p{Extended_Pictographic}\u200d\ufe0f]/u.test(character))
+    .join("")
+    .slice(0, 30);
 }
 
 function startTimer() {
   const name = runnerName.value.trim().replace(/ +/g, " ");
   if (!validRunnerName(name)) {
-    nameHint.textContent = "Enter a valid name using letters and spaces only.";
+    nameHint.textContent = "Use letters and emojis only — no spaces or special characters.";
     nameHint.classList.add("error");
     runnerName.focus();
     return;
@@ -304,7 +312,7 @@ function saveRun() {
   let valid = true;
 
   if (!validRunnerName(name)) {
-    nameHint.textContent = "Enter a valid name using letters and spaces only.";
+    nameHint.textContent = "Use letters and emojis only — no spaces or special characters.";
     nameHint.classList.add("error");
     valid = false;
   }
@@ -337,23 +345,29 @@ function saveRun() {
 function setSettingsOpen(isOpen) {
   settingsPanel.classList.toggle("hidden", !isOpen);
   openSettingsButton.setAttribute("aria-expanded", String(isOpen));
+  if (isOpen) {
+    clearScoresPassword.value = "";
+    clearScoresHint.textContent = "Password is hidden while you type.";
+    clearScoresHint.classList.remove("error");
+  }
 }
 
 async function clearScores() {
-  const passcode = window.prompt("Enter the organizer passcode to clear all scores:");
-  if (passcode === null) return;
-  if (passcode !== CLEAR_SCORES_PASSCODE) {
-    window.alert("Incorrect passcode. Scores were not cleared.");
+  if (clearScoresPassword.value !== CLEAR_SCORES_PASSCODE) {
+    clearScoresHint.textContent = "Incorrect password.";
+    clearScoresHint.classList.add("error");
+    clearScoresPassword.focus();
     return;
   }
-  if (!window.confirm("Clear all saved scores from this leaderboard?")) return;
 
   state.scores = {};
   saveLocal();
   renderScores();
   const cloudCleared = await clearCloudScores();
-  setSyncText(cloudCleared ? "Scores cleared everywhere" : "Cloud clear needs setup", false);
-  setSettingsOpen(false);
+  clearScoresPassword.value = "";
+  clearScoresHint.textContent = cloudCleared ? "Scores erased everywhere." : "Local scores erased. Apply the Supabase delete policy to erase cloud scores.";
+  clearScoresHint.classList.toggle("error", !cloudCleared);
+  setSyncText(cloudCleared ? "Scores cleared everywhere" : "Local scores cleared", false);
 }
 
 function applyTheme(theme) {
@@ -361,8 +375,6 @@ function applyTheme(theme) {
   document.body.classList.toggle("light-mode", state.theme === "light");
   document.documentElement.style.colorScheme = state.theme;
   localStorage.setItem(THEME_KEY, state.theme);
-  themeToggle.textContent = state.theme === "light" ? "☾" : "☀";
-  themeToggle.setAttribute("aria-label", state.theme === "light" ? "Switch to dark mode" : "Switch to light mode");
   darkThemeButton.classList.toggle("selected", state.theme === "dark");
   lightThemeButton.classList.toggle("selected", state.theme === "light");
   darkThemeButton.setAttribute("aria-pressed", String(state.theme === "dark"));
@@ -370,7 +382,7 @@ function applyTheme(theme) {
 }
 
 function saveDefaultName() {
-  const cleaned = defaultNameInput.value.replace(/[^a-zA-Z ]/g, "").replace(/ +/g, " ").trim().slice(0, 30);
+  const cleaned = cleanRunnerName(defaultNameInput.value);
   defaultNameInput.value = cleaned;
   state.defaultName = cleaned;
   localStorage.setItem(DEFAULT_NAME_KEY, cleaned);
@@ -386,10 +398,13 @@ $("runForm").addEventListener("submit", (event) => { event.preventDefault(); sav
 $("closeSettingsButton").addEventListener("click", () => setSettingsOpen(false));
 openSettingsButton.addEventListener("click", () => setSettingsOpen(settingsPanel.classList.contains("hidden")));
 $("clearScoresButton").addEventListener("click", clearScores);
-themeToggle.addEventListener("click", () => applyTheme(state.theme === "dark" ? "light" : "dark"));
 darkThemeButton.addEventListener("click", () => applyTheme("dark"));
 lightThemeButton.addEventListener("click", () => applyTheme("light"));
 defaultNameInput.addEventListener("input", saveDefaultName);
+clearScoresPassword.addEventListener("input", () => {
+  clearScoresHint.textContent = "Password is hidden while you type.";
+  clearScoresHint.classList.remove("error");
+});
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
 settingsPanel.addEventListener("click", (event) => { if (event.target === settingsPanel) setSettingsOpen(false); });
@@ -401,11 +416,12 @@ document.addEventListener("keydown", (event) => {
 });
 
 runnerName.addEventListener("input", () => {
-  runnerName.value = runnerName.value.replace(/[^a-zA-Z ]/g, "").slice(0, 30);
-  nameHint.textContent = "Letters and spaces only.";
+  runnerName.value = cleanRunnerName(runnerName.value);
+  nameHint.textContent = "Letters and emojis only — no spaces or special characters.";
   nameHint.classList.remove("error");
 });
 runPoints.addEventListener("input", () => {
+  runPoints.value = runPoints.value.replace(/\D/g, "").slice(0, 6);
   pointsHint.textContent = "Enter the points you earned, then save your run.";
   pointsHint.classList.remove("error");
 });

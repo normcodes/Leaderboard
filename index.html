@@ -14,7 +14,7 @@
         <span class="brand-mark">LB</span>
         <span>LEADERBOARD<span class="brand-dot">.</span></span>
       </a>
-      <div class="header-actions"><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch theme">☾</button><button class="header-start primary-button" id="openTimerButton" type="button"><span class="play-icon">▶</span> Start run</button></div>
+      <div class="header-actions"><button class="header-start primary-button" id="openTimerButton" type="button"><span class="play-icon">▶</span> Start run</button></div>
     </header>
 
     <section class="board-card" aria-labelledby="leaderboardTitle">
@@ -63,7 +63,7 @@
         <div id="setupFields">
           <label for="runnerName">Runner name <span>30 letters max</span></label>
           <input id="runnerName" name="runnerName" type="text" maxlength="30" autocomplete="off" placeholder="YOUR NAME" required />
-          <p class="field-hint" id="nameHint">Letters and spaces only.</p>
+          <p class="field-hint" id="nameHint">Letters and emojis only — no spaces or special characters.</p>
 
           <div class="form-grid">
             <div>
@@ -93,7 +93,7 @@
           <p class="run-phase">TIME RECORDED</p>
           <div class="recorded-time" id="recordedTime">00:00.000</div>
           <label for="runPoints">Points</label>
-          <input id="runPoints" name="runPoints" type="number" min="0" max="999999" step="1" inputmode="numeric" placeholder="Enter points" required />
+          <input id="runPoints" name="runPoints" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="Enter points" required />
           <p class="field-hint" id="pointsHint">Enter the points you earned, then save your run.</p>
           <button class="primary-button save-button" id="saveRunButton" type="submit">Save</button>
         </section>
@@ -117,8 +117,11 @@
       <p class="device-note">Device settings are saved only on this device.</p>
       <div class="dev-mode-divider"></div>
       <p class="dev-mode-label">DEV MODE</p>
-      <p class="settings-copy">Clear saved leaderboard scores from this site. A passcode is required.</p>
-      <button class="secondary-button clear-button" id="clearScoresButton" type="button">Clear scores</button>
+      <p class="settings-copy">Clear saved leaderboard scores from this site.</p>
+      <label for="clearScoresPassword">Dev mode password</label>
+      <input id="clearScoresPassword" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter password" />
+      <p class="field-hint" id="clearScoresHint">Password is hidden while you type.</p>
+      <button class="secondary-button clear-button" id="clearScoresButton" type="button">Erase scores</button>
     </div>
   </div>
   <script src="script.js"></script>
