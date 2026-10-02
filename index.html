@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#10131a" />
+  <meta name="theme-color" content="#050505" />
   <title>Sadlier Leaderboard</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -14,7 +14,7 @@
         <span class="brand-mark">LB</span>
         <span>LEADERBOARD<span class="brand-dot">.</span></span>
       </a>
-      <div class="header-actions"><button class="header-start primary-button" id="openTimerButton" type="button"><span class="play-icon">▶</span> Start run</button></div>
+      <div class="header-actions"><button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch theme">☾</button><button class="header-start primary-button" id="openTimerButton" type="button"><span class="play-icon">▶</span> Start run</button></div>
     </header>
 
     <section class="board-card" aria-labelledby="leaderboardTitle">
@@ -32,9 +32,9 @@
       </nav>
 
       <div class="search-toolbar">
-        <div class="amazon-search"><select aria-label="Search field"><option>All</option></select><input id="searchInput" type="search" placeholder="Search runners or units" aria-label="Search runners or units" /><button id="searchButton" type="button" aria-label="Search"><span class="search-icon" aria-hidden="true"></span></button></div>
+        <div class="amazon-search"><input id="searchInput" type="search" placeholder="Search runners or units" aria-label="Search runners or units" /><button id="searchButton" type="button" aria-label="Search"><span class="search-icon" aria-hidden="true"></span></button></div>
         <select class="filter-select" id="unitFilter" aria-label="Filter by unit"><option value="all">All units</option></select>
-        <select class="filter-select" id="sortFilter" aria-label="Sort leaderboard"><option value="rank">Rank</option><option value="time">Time</option></select>
+        <select class="filter-select" id="sortFilter" aria-label="Sort leaderboard"><option value="points" selected>Points</option><option value="time">Time</option></select>
       </div>
       <div class="board-meta"><span id="modeLabel">In Order</span><span id="scoreCount">0 runs</span></div>
       <div class="score-table-wrap">
@@ -61,8 +61,8 @@
 
       <form id="runForm" novalidate>
         <div id="setupFields">
-          <label for="runnerName">Runner name <span>10 letters max</span></label>
-          <input id="runnerName" name="runnerName" type="text" maxlength="10" autocomplete="off" placeholder="YOUR NAME" required />
+          <label for="runnerName">Runner name <span>30 letters max</span></label>
+          <input id="runnerName" name="runnerName" type="text" maxlength="30" autocomplete="off" placeholder="YOUR NAME" required />
           <p class="field-hint" id="nameHint">Letters and spaces only.</p>
 
           <div class="form-grid">
@@ -78,7 +78,7 @@
 
           <div class="sadlier-actions">
             <button class="secondary-button" id="openSadlierButton" type="button">Open Sadlier Level 2</button>
-            <button class="primary-button" id="startTimerButton" type="button"><span class="play-icon">▶</span> Start after Restart</button>
+            <button class="primary-button" id="startTimerButton" type="button"><span class="play-icon">▶</span> Start</button>
           </div>
         </div>
 
@@ -98,17 +98,25 @@
           <button class="primary-button save-button" id="saveRunButton" type="submit">Save</button>
         </section>
 
-        <div class="timer-actions" id="prestartActions">
-          <button class="secondary-button" id="resetTimerButton" type="button">Reset</button>
-        </div>
       </form>
     </div>
   </div>
   <div class="settings-panel hidden" id="settingsPanel" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="settings-card">
       <button class="close-button" id="closeSettingsButton" type="button" aria-label="Close settings">×</button>
-      <p class="eyebrow">SETTINGS</p>
-      <h2 id="settingsTitle">Organizer controls</h2>
+      <p class="eyebrow">USER SETTINGS</p>
+      <h2 id="settingsTitle">Settings</h2>
+      <div class="setting-row">
+        <div><strong>Theme</strong><span>Choose how this device displays the leaderboard.</span></div>
+        <div class="theme-choice" role="group" aria-label="Theme"><button class="theme-choice-button" id="darkThemeButton" type="button" data-theme-choice="dark">Dark</button><button class="theme-choice-button" id="lightThemeButton" type="button" data-theme-choice="light">Light</button></div>
+      </div>
+      <div class="setting-row">
+        <label for="defaultName"><strong>Default name</strong><span>Leave as Custom to enter your name every time.</span></label>
+        <input id="defaultName" type="text" maxlength="30" autocomplete="off" placeholder="Custom" />
+      </div>
+      <p class="device-note">Device settings are saved only on this device.</p>
+      <div class="dev-mode-divider"></div>
+      <p class="dev-mode-label">DEV MODE</p>
       <p class="settings-copy">Clear saved leaderboard scores from this site. A passcode is required.</p>
       <button class="secondary-button clear-button" id="clearScoresButton" type="button">Clear scores</button>
     </div>

@@ -1,5 +1,6 @@
 const STORAGE_KEY = "sadlier-leaderboard-v4";
 const THEME_KEY = "sadlier-leaderboard-theme";
+const DEFAULT_NAME_KEY = "sadlier-leaderboard-default-name";
 const SYNC_CHANNEL = "sadlier-leaderboard-sync";
 const CLEAR_SCORES_PASSCODE = "0527";
 const SUPABASE_URL = "https://aqogklmsnyoeiifpjrbw.supabase.co";
@@ -11,9 +12,11 @@ const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?product
 const state = {
   mode: modes[0],
   unitFilter: "all",
-  sortBy: "rank",
+  sortBy: "points",
   search: "",
   scores: loadScores(),
+  theme: localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark",
+  defaultName: localStorage.getItem(DEFAULT_NAME_KEY) || "",
   timer: { startedAt: null, elapsed: 0, interval: null, running: false },
 };
 
@@ -23,6 +26,10 @@ const emptyState = $("emptyState");
 const timerModal = $("timerModal");
 const settingsPanel = $("settingsPanel");
 const openSettingsButton = $("openSettingsButton");
+const themeToggle = $("themeToggle");
+const darkThemeButton = $("darkThemeButton");
+const lightThemeButton = $("lightThemeButton");
+const defaultNameInput = $("defaultName");
 const runnerName = $("runnerName");
 const runMode = $("runMode");
 const runUnit = $("runUnit");
@@ -34,7 +41,6 @@ const setupFields = $("setupFields");
 const modalIntro = $("modalIntro");
 const activeRunSection = $("activeRunSection");
 const finishRunSection = $("finishRunSection");
-const prestartActions = $("prestartActions");
 const timerDisplay = $("timerDisplay");
 const recordedTime = $("recordedTime");
 const timerState = $("timerState");
@@ -175,8 +181,14 @@ function renderScores() {
   let scores = sortScores(state.scores[state.mode] || []);
   if (state.unitFilter !== "all") scores = scores.filter((score) => String(score.unit) === state.unitFilter);
   if (state.search) {
-    const query = state.search.toLowerCase();
-    scores = scores.filter((score) => `${score.name} unit ${score.unit}`.toLowerCase().includes(query));
+    const query = state.search.toLowerCase().replace(/\s+/g, " ").trim();
+    const unitQuery = query.replace(/^unit\s*/, "");
+    scores = scores.filter((score) => {
+      const unit = String(score.unit);
+      return score.name.toLowerCase().includes(query)
+        || unit === unitQuery
+        || `unit ${unit}` === query;
+    });
   }
   $("modeLabel").textContent = state.mode;
   $("scoreCount").textContent = `${scores.length} ${scores.length === 1 ? "run" : "runs"}`;
@@ -202,7 +214,6 @@ sortFilter.addEventListener("change", () => { state.sortBy = sortFilter.value; r
 function showSetupStage() {
   modalIntro.classList.remove("hidden");
   setupFields.classList.remove("hidden");
-  prestartActions.classList.remove("hidden");
   activeRunSection.classList.add("hidden");
   finishRunSection.classList.add("hidden");
   startTimerButton.disabled = false;
@@ -213,7 +224,6 @@ function showSetupStage() {
 function showActiveStage() {
   modalIntro.classList.add("hidden");
   setupFields.classList.add("hidden");
-  prestartActions.classList.add("hidden");
   activeRunSection.classList.remove("hidden");
   finishRunSection.classList.add("hidden");
   startTimerButton.disabled = true;
@@ -224,7 +234,6 @@ function showActiveStage() {
 function showFinishStage() {
   modalIntro.classList.add("hidden");
   setupFields.classList.add("hidden");
-  prestartActions.classList.add("hidden");
   activeRunSection.classList.add("hidden");
   finishRunSection.classList.remove("hidden");
   recordedTime.textContent = formatTime(state.timer.elapsed);
@@ -240,7 +249,7 @@ function updateTimer() {
 }
 
 function validRunnerName(name) {
-  return /^[a-zA-Z]+(?: [a-zA-Z]+)*$/.test(name) && name.length <= 10;
+  return /^[a-zA-Z]+(?: [a-zA-Z]+)*$/.test(name) && name.length <= 30;
 }
 
 function startTimer() {
@@ -278,6 +287,7 @@ function resetTimer() {
 
 function openTimer() {
   resetTimer();
+  runnerName.value = state.defaultName;
   timerModal.classList.remove("hidden");
   runnerName.focus();
 }
@@ -338,17 +348,36 @@ async function clearScores() {
   }
   if (!window.confirm("Clear all saved scores from this leaderboard?")) return;
 
-  const cloudCleared = await clearCloudScores();
   state.scores = {};
   saveLocal();
   renderScores();
-  setSyncText(cloudCleared ? "Scores cleared everywhere" : "Local scores cleared", false);
+  const cloudCleared = await clearCloudScores();
+  setSyncText(cloudCleared ? "Scores cleared everywhere" : "Cloud clear needs setup", false);
   setSettingsOpen(false);
+}
+
+function applyTheme(theme) {
+  state.theme = theme === "light" ? "light" : "dark";
+  document.body.classList.toggle("light-mode", state.theme === "light");
+  document.documentElement.style.colorScheme = state.theme;
+  localStorage.setItem(THEME_KEY, state.theme);
+  themeToggle.textContent = state.theme === "light" ? "☾" : "☀";
+  themeToggle.setAttribute("aria-label", state.theme === "light" ? "Switch to dark mode" : "Switch to light mode");
+  darkThemeButton.classList.toggle("selected", state.theme === "dark");
+  lightThemeButton.classList.toggle("selected", state.theme === "light");
+  darkThemeButton.setAttribute("aria-pressed", String(state.theme === "dark"));
+  lightThemeButton.setAttribute("aria-pressed", String(state.theme === "light"));
+}
+
+function saveDefaultName() {
+  const cleaned = defaultNameInput.value.replace(/[^a-zA-Z ]/g, "").replace(/ +/g, " ").trim().slice(0, 30);
+  defaultNameInput.value = cleaned;
+  state.defaultName = cleaned;
+  localStorage.setItem(DEFAULT_NAME_KEY, cleaned);
 }
 
 $("openTimerButton").addEventListener("click", openTimer);
 $("closeTimerButton").addEventListener("click", closeTimer);
-$("resetTimerButton").addEventListener("click", resetTimer);
 $("openSadlierButton").addEventListener("click", () => window.open(SADLIER_URL, "_blank", "noopener,noreferrer"));
 startTimerButton.addEventListener("click", startTimer);
 stopTimerButton.addEventListener("click", stopTimer);
@@ -357,6 +386,10 @@ $("runForm").addEventListener("submit", (event) => { event.preventDefault(); sav
 $("closeSettingsButton").addEventListener("click", () => setSettingsOpen(false));
 openSettingsButton.addEventListener("click", () => setSettingsOpen(settingsPanel.classList.contains("hidden")));
 $("clearScoresButton").addEventListener("click", clearScores);
+themeToggle.addEventListener("click", () => applyTheme(state.theme === "dark" ? "light" : "dark"));
+darkThemeButton.addEventListener("click", () => applyTheme("dark"));
+lightThemeButton.addEventListener("click", () => applyTheme("light"));
+defaultNameInput.addEventListener("input", saveDefaultName);
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
 settingsPanel.addEventListener("click", (event) => { if (event.target === settingsPanel) setSettingsOpen(false); });
@@ -368,7 +401,7 @@ document.addEventListener("keydown", (event) => {
 });
 
 runnerName.addEventListener("input", () => {
-  runnerName.value = runnerName.value.replace(/[^a-zA-Z ]/g, "").slice(0, 10);
+  runnerName.value = runnerName.value.replace(/[^a-zA-Z ]/g, "").slice(0, 30);
   nameHint.textContent = "Letters and spaces only.";
   nameHint.classList.remove("error");
 });
@@ -388,4 +421,6 @@ window.addEventListener("pagehide", () => {
 renderScores();
 setMode(state.mode);
 updateTimer();
+defaultNameInput.value = state.defaultName;
+applyTheme(state.theme);
 pullCloudScores();
