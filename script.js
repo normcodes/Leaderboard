@@ -2,6 +2,7 @@ const STORAGE_KEY = "sadlier-leaderboard-v4";
 const THEME_KEY = "sadlier-leaderboard-theme";
 const DEFAULT_NAME_KEY = "sadlier-leaderboard-default-name";
 const SKIP_DELETE_CONFIRM_KEY = "sadlier-leaderboard-skip-delete-confirm";
+const BANNED_NAMES_KEY = "sadlier-leaderboard-banned-names";
 const DEVICE_TOKEN_KEY = "sadlier-leaderboard-device-token";
 const ACTIVE_RUN_KEY = "sadlier-leaderboard-active-run";
 const RUN_TIMEOUT_MS = 15 * 60 * 1000;
@@ -22,8 +23,11 @@ const state = {
   theme: localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark",
   defaultName: localStorage.getItem(DEFAULT_NAME_KEY) || "",
   skipDeleteConfirm: localStorage.getItem(SKIP_DELETE_CONFIRM_KEY) === "true",
+  bannedNames: loadBannedNames(),
+  devMode: false,
   deviceToken: getDeviceToken(),
   pendingDelete: null,
+  contextScore: null,
   editingScore: null,
   versionClicks: 0,
   versionClickTimer: null,
@@ -40,9 +44,12 @@ const darkThemeButton = $("darkThemeButton");
 const lightThemeButton = $("lightThemeButton");
 const defaultNameInput = $("defaultName");
 const skipDeleteConfirm = $("skipDeleteConfirm");
+const skipDeleteSetting = $("skipDeleteSetting");
 const adminPanel = $("adminPanel");
 const adminPassword = $("adminPassword");
 const adminHint = $("adminHint");
+const unlockFields = $("unlockFields");
+const devControls = $("devControls");
 const confirmPanel = $("confirmPanel");
 const confirmCopy = $("confirmCopy");
 const confirmNever = $("confirmNever");
@@ -51,6 +58,9 @@ const editName = $("editName");
 const editPoints = $("editPoints");
 const editUnit = $("editUnit");
 const editHint = $("editHint");
+const scoreContextMenu = $("scoreContextMenu");
+const contextEditButton = $("contextEditButton");
+const contextBanButton = $("contextBanButton");
 const runnerName = $("runnerName");
 const runMode = $("runMode");
 const runUnit = $("runUnit");
@@ -83,6 +93,10 @@ function getDeviceToken() {
     localStorage.setItem(DEVICE_TOKEN_KEY, token);
   }
   return token;
+}
+
+function loadBannedNames() {
+  try { return JSON.parse(localStorage.getItem(BANNED_NAMES_KEY)) || []; } catch (_) { return []; }
 }
 
 let channel;
@@ -249,7 +263,7 @@ function renderScores() {
     const score = scores.find((item) => scoreKey(item) === button.dataset.scoreId);
     if (!score) return;
     button.addEventListener("click", () => requestDeleteScore(score));
-    button.addEventListener("contextmenu", (event) => { event.preventDefault(); openEditScore(score); });
+    button.addEventListener("contextmenu", (event) => { event.preventDefault(); openScoreContextMenu(score, event.clientX, event.clientY); });
   });
 }
 
@@ -337,6 +351,11 @@ function startTimer() {
   }
   localStorage.removeItem(ACTIVE_RUN_KEY);
   const name = runnerName.value.trim().replace(/ +/g, " ");
+  if (state.bannedNames.includes(name.toLowerCase())) {
+    nameHint.textContent = "This name is banned from entering scores on this device.";
+    nameHint.classList.add("error");
+    return;
+  }
   if (!validRunnerName(name)) {
     nameHint.textContent = "Use letters and emojis only — no spaces or special characters.";
     nameHint.classList.add("error");
@@ -427,48 +446,84 @@ function saveRun() {
 function setSettingsOpen(isOpen) {
   settingsPanel.classList.toggle("hidden", !isOpen);
   openSettingsButton.setAttribute("aria-expanded", String(isOpen));
+  skipDeleteSetting.classList.toggle("hidden", !state.devMode);
   if (isOpen) skipDeleteConfirm.checked = state.skipDeleteConfirm;
 }
 
 function setPanel(panel, isOpen) { panel.classList.toggle("hidden", !isOpen); }
 
 function openAdminUnlock() {
+  unlockFields.classList.toggle("hidden", state.devMode);
+  devControls.classList.toggle("hidden", !state.devMode);
   adminPassword.value = "";
-  adminHint.textContent = "Password is hidden while you type.";
+  adminHint.textContent = state.devMode ? "Dev Mode is active for this tab." : "Password is hidden while you type.";
   adminHint.classList.remove("error");
   setPanel(adminPanel, true);
-  adminPassword.focus();
+  if (!state.devMode) adminPassword.focus();
 }
 
-async function wipeDatabase() {
+function enableDevMode() {
   if (adminPassword.value !== CLEAR_SCORES_PASSCODE) {
     adminHint.textContent = "Incorrect password.";
     adminHint.classList.add("error");
     adminPassword.focus();
     return;
   }
+  state.devMode = true;
+  setPanel(adminPanel, false);
+  setSettingsOpen(false);
+  setSyncText("Dev Mode enabled for this tab", false);
+}
+
+function turnOffDevMode() {
+  state.devMode = false;
+  state.skipDeleteConfirm = false;
+  setPanel(adminPanel, false);
+  setSettingsOpen(false);
+  setSyncText("Dev Mode off", false);
+}
+
+async function wipeDatabase() {
+  if (!state.devMode) return;
 
   const cloudCleared = await clearCloudScores();
-  if (!cloudCleared) {
-    adminHint.textContent = "The database did not allow the wipe. Apply the Supabase DELETE policy first.";
-    adminHint.classList.add("error");
-    return;
-  }
   state.scores = {};
   saveLocal();
   renderScores();
-  setSyncText("Database wiped", false);
-  setPanel(adminPanel, false);
-  setSettingsOpen(false);
+  adminHint.textContent = cloudCleared ? "Scores cleared from the database and this device." : "Local scores cleared, but the database rejected the wipe. Apply the Supabase DELETE policy.";
+  adminHint.classList.toggle("error", !cloudCleared);
+  setSyncText(cloudCleared ? "Database cleared" : "Local scores cleared", false);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function requestDeleteScore(score) {
-  if (state.skipDeleteConfirm) return deleteScore(score);
+  if (state.devMode && state.skipDeleteConfirm) return deleteScore(score);
   state.pendingDelete = score;
   confirmCopy.textContent = `Remove ${score.name} with ${Number(score.points) || 0} points?`;
   confirmNever.checked = false;
   setPanel(confirmPanel, true);
+}
+
+function openScoreContextMenu(score, x, y) {
+  state.contextScore = score;
+  scoreContextMenu.classList.remove("hidden");
+  scoreContextMenu.style.left = `${Math.min(x, window.innerWidth - 150)}px`;
+  scoreContextMenu.style.top = `${Math.min(y, window.innerHeight - 100)}px`;
+}
+
+function closeScoreContextMenu() {
+  scoreContextMenu.classList.add("hidden");
+  state.contextScore = null;
+}
+
+function banContextScore() {
+  const score = state.contextScore;
+  if (!score) return;
+  const normalized = score.name.toLowerCase();
+  if (!state.bannedNames.includes(normalized)) state.bannedNames.push(normalized);
+  localStorage.setItem(BANNED_NAMES_KEY, JSON.stringify(state.bannedNames));
+  closeScoreContextMenu();
+  setSyncText(`${score.name} banned on this device`, false);
 }
 
 async function deleteScore(score) {
@@ -551,11 +606,13 @@ skipDeleteConfirm.addEventListener("change", () => {
 $("versionButton").addEventListener("click", () => {
   state.versionClicks += 1;
   window.clearTimeout(state.versionClickTimer);
-  state.versionClickTimer = window.setTimeout(() => { state.versionClicks = 0; }, 5000);
+  state.versionClickTimer = window.setTimeout(() => { state.versionClicks = 0; }, 15000);
   if (state.versionClicks >= 5) { state.versionClicks = 0; openAdminUnlock(); }
 });
 $("closeAdminButton").addEventListener("click", () => setPanel(adminPanel, false));
+$("enableDevModeButton").addEventListener("click", enableDevMode);
 $("wipeDatabaseButton").addEventListener("click", wipeDatabase);
+$("turnOffDevModeButton").addEventListener("click", turnOffDevMode);
 adminPassword.addEventListener("input", () => { adminHint.textContent = "Password is hidden while you type."; adminHint.classList.remove("error"); });
 $("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; setPanel(confirmPanel, false); });
 $("acceptConfirmButton").addEventListener("click", () => { if (confirmNever.checked) { state.skipDeleteConfirm = true; localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "true"); } if (state.pendingDelete) deleteScore(state.pendingDelete); });
@@ -564,9 +621,15 @@ $("cancelEditButton").addEventListener("click", () => setPanel(editPanel, false)
 $("saveEditButton").addEventListener("click", saveEditedScore);
 editName.addEventListener("input", () => { editName.value = cleanRunnerName(editName.value); });
 editPoints.addEventListener("input", () => { editPoints.value = editPoints.value.replace(/\D/g, "").slice(0, 6); });
+contextEditButton.addEventListener("click", () => { const score = state.contextScore; closeScoreContextMenu(); if (score) openEditScore(score); });
+contextBanButton.addEventListener("click", banContextScore);
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
 settingsPanel.addEventListener("click", (event) => { if (event.target === settingsPanel) setSettingsOpen(false); });
+adminPanel.addEventListener("click", (event) => { if (event.target === adminPanel) setPanel(adminPanel, false); });
+confirmPanel.addEventListener("click", (event) => { if (event.target === confirmPanel) setPanel(confirmPanel, false); });
+editPanel.addEventListener("click", (event) => { if (event.target === editPanel) setPanel(editPanel, false); });
+document.addEventListener("click", (event) => { if (!scoreContextMenu.contains(event.target)) closeScoreContextMenu(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (!settingsPanel.classList.contains("hidden")) setSettingsOpen(false);
@@ -574,6 +637,7 @@ document.addEventListener("keydown", (event) => {
     else if (!adminPanel.classList.contains("hidden")) setPanel(adminPanel, false);
     else if (!confirmPanel.classList.contains("hidden")) setPanel(confirmPanel, false);
     else if (!editPanel.classList.contains("hidden")) setPanel(editPanel, false);
+    closeScoreContextMenu();
   }
 });
 
