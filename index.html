@@ -47,7 +47,7 @@
       <p class="sync-note">Highest points rank first. Fastest time breaks ties. Runs sync to everyone when cloud sync is connected.</p>
     </section>
 
-    <footer><div class="footer-main"><span>SADLIER LEADERBOARD</span><button class="settings-button" id="openSettingsButton" type="button" aria-expanded="false" aria-controls="settingsPanel">Settings</button></div><span>Make your best time count.</span><span class="sync-status" aria-live="polite"><span class="sync-dot"></span><span id="syncText">Cloud sync connecting</span></span></footer>
+    <footer><div class="footer-main"><span>SADLIER LEADERBOARD</span><button class="settings-button" id="openSettingsButton" type="button" aria-expanded="false" aria-controls="settingsPanel">Settings</button></div><button class="version-button" id="versionButton" type="button">Version 1.3</button><span class="sync-status" aria-live="polite"><span class="sync-dot"></span><span id="syncText">Cloud sync connecting</span></span></footer>
   </main>
 
   <div class="modal-backdrop hidden" id="timerModal" role="dialog" aria-modal="true" aria-labelledby="timerTitle">
@@ -114,15 +114,25 @@
         <label for="defaultName"><strong>Default name</strong><span>Leave as Custom to enter your name every time.</span></label>
         <input id="defaultName" type="text" maxlength="30" autocomplete="off" placeholder="Custom" />
       </div>
+      <label class="check-row" for="skipDeleteConfirm"><input id="skipDeleteConfirm" type="checkbox" /><span><strong>Skip delete confirmations</strong><small>Turn this off to show the confirmation again.</small></span></label>
       <p class="device-note">Device settings are saved only on this device.</p>
-      <div class="dev-mode-divider"></div>
-      <p class="dev-mode-label">DEV MODE</p>
-      <p class="settings-copy">Clear saved leaderboard scores from this site.</p>
-      <label for="clearScoresPassword">Dev mode password</label>
-      <input id="clearScoresPassword" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter password" />
-      <p class="field-hint" id="clearScoresHint">Password is hidden while you type.</p>
-      <button class="secondary-button clear-button" id="clearScoresButton" type="button">Erase scores</button>
     </div>
+  </div>
+  <div class="custom-panel hidden" id="adminPanel" role="dialog" aria-modal="true" aria-labelledby="adminTitle">
+    <div class="custom-card">
+      <button class="close-button" id="closeAdminButton" type="button" aria-label="Close developer tools">×</button>
+      <p class="eyebrow">VERSION 1.3</p><h2 id="adminTitle">Developer access</h2>
+      <p class="settings-copy">Enter the password to erase every score from the database and this device.</p>
+      <label for="adminPassword">Password</label><input id="adminPassword" type="password" inputmode="numeric" autocomplete="off" placeholder="Enter password" />
+      <p class="field-hint" id="adminHint">Password is hidden while you type.</p>
+      <button class="primary-button clear-button" id="wipeDatabaseButton" type="button">Wipe database</button>
+    </div>
+  </div>
+  <div class="custom-panel hidden" id="confirmPanel" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+    <div class="custom-card compact-card"><p class="eyebrow">CONFIRM ACTION</p><h2 id="confirmTitle">Delete this score?</h2><p class="settings-copy" id="confirmCopy">This cannot be undone.</p><label class="check-row" for="confirmNever"><input id="confirmNever" type="checkbox" /><span>Never show this again</span></label><div class="dialog-actions"><button class="secondary-button" id="cancelConfirmButton" type="button">Cancel</button><button class="primary-button" id="acceptConfirmButton" type="button">Delete</button></div></div>
+  </div>
+  <div class="custom-panel hidden" id="editPanel" role="dialog" aria-modal="true" aria-labelledby="editTitle">
+    <div class="custom-card"><button class="close-button" id="closeEditButton" type="button" aria-label="Close editor">×</button><p class="eyebrow">EDIT SCORE</p><h2 id="editTitle">Edit run</h2><label for="editName">Name</label><input id="editName" type="text" maxlength="30" /><label for="editPoints">Points</label><input id="editPoints" type="text" inputmode="numeric" maxlength="6" /><label for="editUnit">Unit</label><select id="editUnit"></select><p class="field-hint" id="editHint">Right-click a runner name to edit.</p><div class="dialog-actions"><button class="secondary-button" id="cancelEditButton" type="button">Cancel</button><button class="primary-button" id="saveEditButton" type="button">Save changes</button></div></div>
   </div>
   <script src="script.js"></script>
 </body>

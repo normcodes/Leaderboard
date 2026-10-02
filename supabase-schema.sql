@@ -32,6 +32,7 @@ alter table public.leaderboard_runs
 
 drop policy if exists "Anyone can read leaderboard runs" on public.leaderboard_runs;
 drop policy if exists "Anyone can add leaderboard runs" on public.leaderboard_runs;
+drop policy if exists "Anyone can edit leaderboard runs" on public.leaderboard_runs;
 drop policy if exists "Anyone can clear leaderboard runs" on public.leaderboard_runs;
 
 create policy "Anyone can read leaderboard runs"
@@ -40,6 +41,11 @@ using (true);
 
 create policy "Anyone can add leaderboard runs"
 on public.leaderboard_runs for insert
+with check (true);
+
+create policy "Anyone can edit leaderboard runs"
+on public.leaderboard_runs for update
+using (true)
 with check (true);
 
 create policy "Anyone can clear leaderboard runs"

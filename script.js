@@ -1,6 +1,10 @@
 const STORAGE_KEY = "sadlier-leaderboard-v4";
 const THEME_KEY = "sadlier-leaderboard-theme";
 const DEFAULT_NAME_KEY = "sadlier-leaderboard-default-name";
+const SKIP_DELETE_CONFIRM_KEY = "sadlier-leaderboard-skip-delete-confirm";
+const DEVICE_TOKEN_KEY = "sadlier-leaderboard-device-token";
+const ACTIVE_RUN_KEY = "sadlier-leaderboard-active-run";
+const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 const SYNC_CHANNEL = "sadlier-leaderboard-sync";
 const CLEAR_SCORES_PASSCODE = "0527";
 const SUPABASE_URL = "https://aqogklmsnyoeiifpjrbw.supabase.co";
@@ -17,7 +21,13 @@ const state = {
   scores: loadScores(),
   theme: localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark",
   defaultName: localStorage.getItem(DEFAULT_NAME_KEY) || "",
-  timer: { startedAt: null, elapsed: 0, interval: null, running: false },
+  skipDeleteConfirm: localStorage.getItem(SKIP_DELETE_CONFIRM_KEY) === "true",
+  deviceToken: getDeviceToken(),
+  pendingDelete: null,
+  editingScore: null,
+  versionClicks: 0,
+  versionClickTimer: null,
+  timer: { startedAt: null, elapsed: 0, interval: null, running: false, token: null, timedOut: false },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -29,8 +39,18 @@ const openSettingsButton = $("openSettingsButton");
 const darkThemeButton = $("darkThemeButton");
 const lightThemeButton = $("lightThemeButton");
 const defaultNameInput = $("defaultName");
-const clearScoresPassword = $("clearScoresPassword");
-const clearScoresHint = $("clearScoresHint");
+const skipDeleteConfirm = $("skipDeleteConfirm");
+const adminPanel = $("adminPanel");
+const adminPassword = $("adminPassword");
+const adminHint = $("adminHint");
+const confirmPanel = $("confirmPanel");
+const confirmCopy = $("confirmCopy");
+const confirmNever = $("confirmNever");
+const editPanel = $("editPanel");
+const editName = $("editName");
+const editPoints = $("editPoints");
+const editUnit = $("editUnit");
+const editHint = $("editHint");
 const runnerName = $("runnerName");
 const runMode = $("runMode");
 const runUnit = $("runUnit");
@@ -53,6 +73,16 @@ const pointsHint = $("pointsHint");
 for (let unit = 1; unit <= 15; unit += 1) {
   runUnit.add(new Option(`Unit ${unit}`, String(unit)));
   unitFilter.add(new Option(`Unit ${unit}`, String(unit)));
+  editUnit.add(new Option(`Unit ${unit}`, String(unit)));
+}
+
+function getDeviceToken() {
+  let token = localStorage.getItem(DEVICE_TOKEN_KEY);
+  if (!token) {
+    token = crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(DEVICE_TOKEN_KEY, token);
+  }
+  return token;
 }
 
 let channel;
@@ -119,7 +149,7 @@ async function pullCloudScores() {
     const cloudScores = {};
     rows.forEach((row) => {
       if (!cloudScores[row.mode]) cloudScores[row.mode] = [];
-      cloudScores[row.mode].push({ id: row.id, name: row.name, points: row.points, unit: String(row.unit), time: row.time_ms, date: row.date });
+      cloudScores[row.mode].push({ id: row.id, mode: row.mode, name: row.name, points: row.points, unit: String(row.unit), time: row.time_ms, date: row.date });
     });
     state.scores = cloudScores;
     saveLocal();
@@ -161,6 +191,22 @@ async function clearCloudScores() {
   }
 }
 
+async function deleteCloudScore(score) {
+  if (!score.id) return true;
+  try {
+    const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "DELETE", headers: { Prefer: "return=minimal" } });
+    return response.ok;
+  } catch (_) { return false; }
+}
+
+async function updateCloudScore(score) {
+  if (!score.id) return true;
+  try {
+    const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ name: score.name, points: score.points, unit: Number(score.unit) }) });
+    return response.ok;
+  } catch (_) { return false; }
+}
+
 setInterval(pullCloudScores, 4000);
 
 function formatTime(milliseconds) {
@@ -178,6 +224,10 @@ function escapeHtml(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[c]));
 }
 
+function scoreKey(score) {
+  return score.id || `${score.name}-${score.time}-${score.date}-${score.unit}`;
+}
+
 function renderScores() {
   let scores = sortScores(state.scores[state.mode] || []);
   if (state.unitFilter !== "all") scores = scores.filter((score) => String(score.unit) === state.unitFilter);
@@ -193,8 +243,14 @@ function renderScores() {
   }
   $("modeLabel").textContent = state.mode;
   $("scoreCount").textContent = `${scores.length} ${scores.length === 1 ? "run" : "runs"}`;
-  scoreRows.innerHTML = scores.map((score, index) => `<tr><td>${String(index + 1).padStart(2, "0")}</td><td>${escapeHtml(score.name)}</td><td>${Number(score.points) || 0} pts</td><td>${formatTime(score.time)}</td><td>Unit ${escapeHtml(score.unit)}</td><td>${escapeHtml(score.date)}</td></tr>`).join("");
+  scoreRows.innerHTML = scores.map((score, index) => `<tr><td>${String(index + 1).padStart(2, "0")}</td><td><button class="score-name-button" type="button" data-score-id="${escapeHtml(scoreKey(score))}">${escapeHtml(score.name)}</button></td><td>${Number(score.points) || 0} pts</td><td>${formatTime(score.time)}</td><td>Unit ${escapeHtml(score.unit)}</td><td>${escapeHtml(score.date)}</td></tr>`).join("");
   emptyState.classList.toggle("hidden", scores.length > 0);
+  scoreRows.querySelectorAll(".score-name-button").forEach((button) => {
+    const score = scores.find((item) => scoreKey(item) === button.dataset.scoreId);
+    if (!score) return;
+    button.addEventListener("click", () => requestDeleteScore(score));
+    button.addEventListener("contextmenu", (event) => { event.preventDefault(); openEditScore(score); });
+  });
 }
 
 function setMode(mode) {
@@ -245,7 +301,19 @@ function showFinishStage() {
 }
 
 function updateTimer() {
-  if (state.timer.running) state.timer.elapsed = performance.now() - state.timer.startedAt;
+  if (state.timer.running) {
+    state.timer.elapsed = performance.now() - state.timer.startedAt;
+    if (state.timer.elapsed >= RUN_TIMEOUT_MS) {
+      state.timer.elapsed = RUN_TIMEOUT_MS;
+      state.timer.running = false;
+      state.timer.timedOut = true;
+      window.clearInterval(state.timer.interval);
+      state.timer.interval = null;
+      localStorage.removeItem(ACTIVE_RUN_KEY);
+      stopTimerButton.disabled = true;
+      timerState.textContent = `This run timed out at ${formatTime(RUN_TIMEOUT_MS)}. You are timed out and cannot enter a score.`;
+    }
+  }
   timerDisplay.textContent = formatTime(state.timer.elapsed);
 }
 
@@ -261,6 +329,13 @@ function cleanRunnerName(value) {
 }
 
 function startTimer() {
+  const existingRun = JSON.parse(localStorage.getItem(ACTIVE_RUN_KEY) || "null");
+  if (existingRun && existingRun.expiresAt > Date.now()) {
+    nameHint.textContent = `This device already has an active run until ${new Date(existingRun.expiresAt).toLocaleTimeString()}.`;
+    nameHint.classList.add("error");
+    return;
+  }
+  localStorage.removeItem(ACTIVE_RUN_KEY);
   const name = runnerName.value.trim().replace(/ +/g, " ");
   if (!validRunnerName(name)) {
     nameHint.textContent = "Use letters and emojis only — no spaces or special characters.";
@@ -270,6 +345,9 @@ function startTimer() {
   }
   runnerName.value = name;
   state.mode = runMode.value;
+  state.timer.token = `${state.deviceToken}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  state.timer.timedOut = false;
+  localStorage.setItem(ACTIVE_RUN_KEY, JSON.stringify({ token: state.timer.token, deviceToken: state.deviceToken, expiresAt: Date.now() + RUN_TIMEOUT_MS }));
   state.timer.startedAt = performance.now() - state.timer.elapsed;
   state.timer.running = true;
   showActiveStage();
@@ -277,17 +355,19 @@ function startTimer() {
 }
 
 function stopTimer() {
-  if (!state.timer.running) return;
+  if (!state.timer.running || state.timer.timedOut) return;
   updateTimer();
   window.clearInterval(state.timer.interval);
   state.timer.interval = null;
   state.timer.running = false;
+  localStorage.removeItem(ACTIVE_RUN_KEY);
   showFinishStage();
 }
 
 function resetTimer() {
   window.clearInterval(state.timer.interval);
-  state.timer = { startedAt: null, elapsed: 0, interval: null, running: false };
+  state.timer = { startedAt: null, elapsed: 0, interval: null, running: false, token: null, timedOut: false };
+  localStorage.removeItem(ACTIVE_RUN_KEY);
   runPoints.value = "";
   updateTimer();
   showSetupStage();
@@ -324,6 +404,8 @@ function saveRun() {
   if (!valid) return;
 
   const score = {
+    id: crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    mode: state.mode,
     name,
     points,
     unit: runUnit.value,
@@ -345,29 +427,91 @@ function saveRun() {
 function setSettingsOpen(isOpen) {
   settingsPanel.classList.toggle("hidden", !isOpen);
   openSettingsButton.setAttribute("aria-expanded", String(isOpen));
-  if (isOpen) {
-    clearScoresPassword.value = "";
-    clearScoresHint.textContent = "Password is hidden while you type.";
-    clearScoresHint.classList.remove("error");
-  }
+  if (isOpen) skipDeleteConfirm.checked = state.skipDeleteConfirm;
 }
 
-async function clearScores() {
-  if (clearScoresPassword.value !== CLEAR_SCORES_PASSCODE) {
-    clearScoresHint.textContent = "Incorrect password.";
-    clearScoresHint.classList.add("error");
-    clearScoresPassword.focus();
+function setPanel(panel, isOpen) { panel.classList.toggle("hidden", !isOpen); }
+
+function openAdminUnlock() {
+  adminPassword.value = "";
+  adminHint.textContent = "Password is hidden while you type.";
+  adminHint.classList.remove("error");
+  setPanel(adminPanel, true);
+  adminPassword.focus();
+}
+
+async function wipeDatabase() {
+  if (adminPassword.value !== CLEAR_SCORES_PASSCODE) {
+    adminHint.textContent = "Incorrect password.";
+    adminHint.classList.add("error");
+    adminPassword.focus();
     return;
   }
 
+  const cloudCleared = await clearCloudScores();
+  if (!cloudCleared) {
+    adminHint.textContent = "The database did not allow the wipe. Apply the Supabase DELETE policy first.";
+    adminHint.classList.add("error");
+    return;
+  }
   state.scores = {};
   saveLocal();
   renderScores();
-  const cloudCleared = await clearCloudScores();
-  clearScoresPassword.value = "";
-  clearScoresHint.textContent = cloudCleared ? "Scores erased everywhere." : "Local scores erased. Apply the Supabase delete policy to erase cloud scores.";
-  clearScoresHint.classList.toggle("error", !cloudCleared);
-  setSyncText(cloudCleared ? "Scores cleared everywhere" : "Local scores cleared", false);
+  setSyncText("Database wiped", false);
+  setPanel(adminPanel, false);
+  setSettingsOpen(false);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function requestDeleteScore(score) {
+  if (state.skipDeleteConfirm) return deleteScore(score);
+  state.pendingDelete = score;
+  confirmCopy.textContent = `Remove ${score.name} with ${Number(score.points) || 0} points?`;
+  confirmNever.checked = false;
+  setPanel(confirmPanel, true);
+}
+
+async function deleteScore(score) {
+  state.scores[score.mode || state.mode] = (state.scores[score.mode || state.mode] || []).filter((item) => scoreKey(item) !== scoreKey(score));
+  saveLocal();
+  renderScores();
+  const cloudDeleted = await deleteCloudScore(score);
+  setSyncText(cloudDeleted ? "Score removed everywhere" : "Score removed locally", false);
+  state.pendingDelete = null;
+  setPanel(confirmPanel, false);
+}
+
+function openEditScore(score) {
+  state.editingScore = score;
+  editName.value = score.name;
+  editPoints.value = String(score.points);
+  editUnit.value = String(score.unit);
+  editHint.textContent = "Change the name, points, or unit, then save.";
+  editHint.classList.remove("error");
+  setPanel(editPanel, true);
+  editName.focus();
+}
+
+async function saveEditedScore() {
+  const score = state.editingScore;
+  if (!score) return;
+  const name = cleanRunnerName(editName.value);
+  const points = Number.parseInt(editPoints.value, 10);
+  if (!validRunnerName(name) || !Number.isInteger(points) || points < 0 || points > 999999) {
+    editHint.textContent = "Use letters/emojis only and a whole-number score from 0 to 999,999.";
+    editHint.classList.add("error");
+    return;
+  }
+  score.name = name;
+  score.points = points;
+  score.unit = editUnit.value;
+  saveLocal();
+  renderScores();
+  const cloudUpdated = await updateCloudScore(score);
+  editHint.textContent = cloudUpdated ? "Score updated everywhere." : "Score updated locally.";
+  editHint.classList.toggle("error", !cloudUpdated);
+  setSyncText(cloudUpdated ? "Score updated everywhere" : "Score updated locally", false);
+  window.setTimeout(() => setPanel(editPanel, false), 500);
 }
 
 function applyTheme(theme) {
@@ -397,14 +541,29 @@ $("runForm").addEventListener("submit", (event) => { event.preventDefault(); sav
 
 $("closeSettingsButton").addEventListener("click", () => setSettingsOpen(false));
 openSettingsButton.addEventListener("click", () => setSettingsOpen(settingsPanel.classList.contains("hidden")));
-$("clearScoresButton").addEventListener("click", clearScores);
 darkThemeButton.addEventListener("click", () => applyTheme("dark"));
 lightThemeButton.addEventListener("click", () => applyTheme("light"));
 defaultNameInput.addEventListener("input", saveDefaultName);
-clearScoresPassword.addEventListener("input", () => {
-  clearScoresHint.textContent = "Password is hidden while you type.";
-  clearScoresHint.classList.remove("error");
+skipDeleteConfirm.addEventListener("change", () => {
+  state.skipDeleteConfirm = skipDeleteConfirm.checked;
+  localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, String(state.skipDeleteConfirm));
 });
+$("versionButton").addEventListener("click", () => {
+  state.versionClicks += 1;
+  window.clearTimeout(state.versionClickTimer);
+  state.versionClickTimer = window.setTimeout(() => { state.versionClicks = 0; }, 5000);
+  if (state.versionClicks >= 5) { state.versionClicks = 0; openAdminUnlock(); }
+});
+$("closeAdminButton").addEventListener("click", () => setPanel(adminPanel, false));
+$("wipeDatabaseButton").addEventListener("click", wipeDatabase);
+adminPassword.addEventListener("input", () => { adminHint.textContent = "Password is hidden while you type."; adminHint.classList.remove("error"); });
+$("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; setPanel(confirmPanel, false); });
+$("acceptConfirmButton").addEventListener("click", () => { if (confirmNever.checked) { state.skipDeleteConfirm = true; localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "true"); } if (state.pendingDelete) deleteScore(state.pendingDelete); });
+$("closeEditButton").addEventListener("click", () => setPanel(editPanel, false));
+$("cancelEditButton").addEventListener("click", () => setPanel(editPanel, false));
+$("saveEditButton").addEventListener("click", saveEditedScore);
+editName.addEventListener("input", () => { editName.value = cleanRunnerName(editName.value); });
+editPoints.addEventListener("input", () => { editPoints.value = editPoints.value.replace(/\D/g, "").slice(0, 6); });
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
 settingsPanel.addEventListener("click", (event) => { if (event.target === settingsPanel) setSettingsOpen(false); });
@@ -412,6 +571,9 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (!settingsPanel.classList.contains("hidden")) setSettingsOpen(false);
     else if (!timerModal.classList.contains("hidden")) closeTimer();
+    else if (!adminPanel.classList.contains("hidden")) setPanel(adminPanel, false);
+    else if (!confirmPanel.classList.contains("hidden")) setPanel(confirmPanel, false);
+    else if (!editPanel.classList.contains("hidden")) setPanel(editPanel, false);
   }
 });
 
@@ -438,5 +600,7 @@ renderScores();
 setMode(state.mode);
 updateTimer();
 defaultNameInput.value = state.defaultName;
+skipDeleteConfirm.checked = state.skipDeleteConfirm;
+editUnit.value = "1";
 applyTheme(state.theme);
 pullCloudScores();
