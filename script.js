@@ -197,16 +197,20 @@ async function pushScore(score, mode) {
 async function deleteCloudScore(score) {
   if (!score.id) return true;
   try {
-    const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "DELETE", headers: { Prefer: "return=minimal" } });
-    return response.ok;
+    const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "DELETE", headers: { Prefer: "return=representation" } });
+    if (!response.ok) return false;
+    const deleted = await response.json();
+    return Array.isArray(deleted) && deleted.length > 0;
   } catch (_) { return false; }
 }
 
 async function updateCloudScore(score) {
   if (!score.id) return true;
   try {
-    const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "PATCH", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ name: score.name, points: score.points, unit: Number(score.unit) }) });
-    return response.ok;
+    const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify({ name: score.name, points: score.points, unit: Number(score.unit) }) });
+    if (!response.ok) return false;
+    const updated = await response.json();
+    return Array.isArray(updated) && updated.length > 0;
   } catch (_) { return false; }
 }
 
@@ -651,6 +655,12 @@ runnerName.addEventListener("input", () => {
   runnerName.value = cleanRunnerName(runnerName.value);
   nameHint.textContent = "Letters and emojis only — no spaces or special characters.";
   nameHint.classList.remove("error");
+});
+runnerName.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    startTimer();
+  }
 });
 runPoints.addEventListener("input", () => {
   runPoints.value = runPoints.value.replace(/\D/g, "").slice(0, 6);
