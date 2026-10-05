@@ -27,6 +27,7 @@ const state = {
   devMode: false,
   deviceToken: getDeviceToken(),
   pendingDelete: null,
+  pendingDeletes: null,
   contextScore: null,
   selectedScoreKeys: new Set(),
   editingScore: null,
@@ -486,16 +487,26 @@ function enableDevMode() {
 function turnOffDevMode() {
   state.devMode = false;
   state.skipDeleteConfirm = false;
+  localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "false");
   setPanel(adminPanel, false);
   setSettingsOpen(false);
   setSyncText("Dev Mode off", false);
 }
 
 function requestDeleteScore(score) {
-  if (state.devMode && state.skipDeleteConfirm) return deleteScore(score);
-  state.pendingDelete = score;
-  confirmCopy.textContent = `Remove ${score.name} with ${Number(score.points) || 0} points?`;
+  requestDeleteScores([score]);
+}
+
+function requestDeleteScores(scores) {
+  if (!scores.length) return closeScoreContextMenu();
+  closeScoreContextMenu();
+  if (state.devMode && state.skipDeleteConfirm) return deleteSelectedScores(scores);
+  state.pendingDeletes = scores;
   confirmNever.checked = false;
+  confirmPanel.querySelector("#confirmTitle").textContent = scores.length === 1 ? "Delete this score?" : "Delete selected scores?";
+  confirmCopy.textContent = scores.length === 1
+    ? `Remove ${scores[0].name} with ${Number(scores[0].points) || 0} points?`
+    : `Remove ${scores.length} selected scores?`;
   setPanel(confirmPanel, true);
 }
 
@@ -516,8 +527,7 @@ function selectedScores() {
   return Object.values(state.scores).flat().filter((score) => state.selectedScoreKeys.has(scoreKey(score)));
 }
 
-async function deleteSelectedScores() {
-  const scores = selectedScores();
+async function deleteSelectedScores(scores = selectedScores()) {
   if (!scores.length) return closeScoreContextMenu();
   closeScoreContextMenu();
   scores.forEach((score) => {
@@ -527,6 +537,7 @@ async function deleteSelectedScores() {
   renderScores();
   const results = await Promise.all(scores.map((score) => deleteCloudScore(score)));
   state.selectedScoreKeys.clear();
+  state.pendingDeletes = null;
   const allDeleted = results.every(Boolean);
   setSyncText(allDeleted ? `${scores.length} score${scores.length === 1 ? "" : "s"} deleted everywhere` : `${scores.length} score${scores.length === 1 ? "" : "s"} deleted locally`, false);
 }
@@ -548,6 +559,7 @@ async function deleteScore(score) {
   const cloudDeleted = await deleteCloudScore(score);
   setSyncText(cloudDeleted ? "Score removed everywhere" : "Score removed locally", false);
   state.pendingDelete = null;
+  state.pendingDeletes = null;
   setPanel(confirmPanel, false);
 }
 
@@ -628,15 +640,19 @@ $("closeAdminButton").addEventListener("click", () => setPanel(adminPanel, false
 $("enableDevModeButton").addEventListener("click", enableDevMode);
 $("turnOffDevModeButton").addEventListener("click", turnOffDevMode);
 adminPassword.addEventListener("input", () => { adminHint.textContent = "Password is hidden while you type."; adminHint.classList.remove("error"); });
-$("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; setPanel(confirmPanel, false); });
-$("acceptConfirmButton").addEventListener("click", () => { if (confirmNever.checked) { state.skipDeleteConfirm = true; localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "true"); } if (state.pendingDelete) deleteScore(state.pendingDelete); });
+$("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; state.pendingDeletes = null; setPanel(confirmPanel, false); });
+$("acceptConfirmButton").addEventListener("click", () => {
+  if (confirmNever.checked && state.devMode) { state.skipDeleteConfirm = true; localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "true"); }
+  if (state.pendingDeletes?.length) deleteSelectedScores(state.pendingDeletes);
+  else if (state.pendingDelete) deleteScore(state.pendingDelete);
+});
 $("closeEditButton").addEventListener("click", () => setPanel(editPanel, false));
 $("cancelEditButton").addEventListener("click", () => setPanel(editPanel, false));
 $("saveEditButton").addEventListener("click", saveEditedScore);
 editName.addEventListener("input", () => { editName.value = cleanRunnerName(editName.value); });
 editPoints.addEventListener("input", () => { editPoints.value = editPoints.value.replace(/\D/g, "").slice(0, 6); });
 contextEditButton.addEventListener("click", () => { const score = state.contextScore; closeScoreContextMenu(); if (score) openEditScore(score); });
-contextDeleteButton.addEventListener("click", deleteSelectedScores);
+contextDeleteButton.addEventListener("click", () => requestDeleteScores(selectedScores()));
 contextBanButton.addEventListener("click", banContextScore);
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
