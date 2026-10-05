@@ -223,6 +223,16 @@ async function updateCloudScore(score) {
   } catch (_) { return false; }
 }
 
+async function deleteCloudScoresByNames(names) {
+  const uniqueNames = [...new Set(names.map((name) => String(name).trim()).filter(Boolean))];
+  if (!uniqueNames.length) return true;
+  try {
+    const response = await cloudRequest({ url: CLEAR_RPC_URL, method: "POST", body: JSON.stringify({ users: uniqueNames }) });
+    const result = await response.json().catch(() => ({}));
+    return response.ok && result.success === true;
+  } catch (_) { return false; }
+}
+
 setInterval(pullCloudScores, 4000);
 
 function formatTime(milliseconds) {
@@ -271,9 +281,7 @@ function renderScores() {
         if (state.selectedScoreKeys.has(key)) state.selectedScoreKeys.delete(key);
         else state.selectedScoreKeys.add(key);
         renderScores();
-        return;
       }
-      requestDeleteScore(score);
     });
     button.addEventListener("contextmenu", (event) => {
       event.preventDefault();
@@ -495,6 +503,7 @@ function turnOffDevMode() {
   state.devMode = false;
   state.skipDeleteConfirm = false;
   localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "false");
+  closeScoreContextMenu();
   setPanel(adminPanel, false);
   setSettingsOpen(false);
   setSyncText("Dev Mode off", false);
@@ -580,11 +589,10 @@ async function deleteSelectedScores(scores = selectedScores()) {
   });
   saveLocal();
   renderScores();
-  const results = await Promise.all(scores.map((score) => deleteCloudScore(score)));
+  const cloudDeleted = await deleteCloudScoresByNames(scores.map((score) => score.name));
   state.selectedScoreKeys.clear();
   state.pendingDeletes = null;
-  const allDeleted = results.every(Boolean);
-  setSyncText(allDeleted ? `${scores.length} score${scores.length === 1 ? "" : "s"} deleted everywhere` : `${scores.length} score${scores.length === 1 ? "" : "s"} deleted locally`, false);
+  setSyncText(cloudDeleted ? `${scores.length} score${scores.length === 1 ? "" : "s"} deleted everywhere` : `${scores.length} score${scores.length === 1 ? "" : "s"} deleted locally`, false);
 }
 
 function banContextScore() {
