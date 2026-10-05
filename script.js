@@ -199,8 +199,10 @@ async function deleteCloudScore(score) {
   try {
     const response = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}`, method: "DELETE", headers: { Prefer: "return=representation" } });
     if (!response.ok) return false;
-    const deleted = await response.json();
-    return Array.isArray(deleted) && deleted.length > 0;
+    const verify = await cloudRequest({ url: `${CLOUD_TABLE}?id=eq.${encodeURIComponent(score.id)}&select=id`, method: "GET" });
+    if (!verify.ok) return false;
+    const remaining = await verify.json();
+    return Array.isArray(remaining) && remaining.length === 0;
   } catch (_) { return false; }
 }
 
@@ -266,7 +268,10 @@ function renderScores() {
       }
       requestDeleteScore(score);
     });
-    button.addEventListener("contextmenu", (event) => { event.preventDefault(); openScoreContextMenu(score, event.clientX, event.clientY); });
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      if (state.devMode) openScoreContextMenu(score, event.clientX, event.clientY);
+    });
   });
 }
 
