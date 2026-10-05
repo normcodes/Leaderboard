@@ -28,6 +28,7 @@ const state = {
   deviceToken: getDeviceToken(),
   pendingDelete: null,
   contextScore: null,
+  selectedScoreKeys: new Set(),
   editingScore: null,
   versionClicks: 0,
   versionClickTimer: null,
@@ -60,6 +61,7 @@ const editUnit = $("editUnit");
 const editHint = $("editHint");
 const scoreContextMenu = $("scoreContextMenu");
 const contextEditButton = $("contextEditButton");
+const contextDeleteButton = $("contextDeleteButton");
 const contextBanButton = $("contextBanButton");
 const runnerName = $("runnerName");
 const runMode = $("runMode");
@@ -192,19 +194,6 @@ async function pushScore(score, mode) {
   }
 }
 
-async function clearCloudScores() {
-  try {
-    const response = await cloudRequest({
-      url: `${CLOUD_TABLE}?id=not.is.null`,
-      method: "DELETE",
-      headers: { Prefer: "return=minimal" },
-    });
-    return response.ok || response.status === 404;
-  } catch (_) {
-    return false;
-  }
-}
-
 async function deleteCloudScore(score) {
   if (!score.id) return true;
   try {
@@ -262,7 +251,17 @@ function renderScores() {
   scoreRows.querySelectorAll(".score-name-button").forEach((button) => {
     const score = scores.find((item) => scoreKey(item) === button.dataset.scoreId);
     if (!score) return;
-    button.addEventListener("click", () => requestDeleteScore(score));
+    button.classList.toggle("selected", state.selectedScoreKeys.has(scoreKey(score)));
+    button.addEventListener("click", (event) => {
+      if (event.ctrlKey || event.metaKey) {
+        const key = scoreKey(score);
+        if (state.selectedScoreKeys.has(key)) state.selectedScoreKeys.delete(key);
+        else state.selectedScoreKeys.add(key);
+        renderScores();
+        return;
+      }
+      requestDeleteScore(score);
+    });
     button.addEventListener("contextmenu", (event) => { event.preventDefault(); openScoreContextMenu(score, event.clientX, event.clientY); });
   });
 }
@@ -483,19 +482,6 @@ function turnOffDevMode() {
   setSyncText("Dev Mode off", false);
 }
 
-async function wipeDatabase() {
-  if (!state.devMode) return;
-
-  const cloudCleared = await clearCloudScores();
-  state.scores = {};
-  saveLocal();
-  renderScores();
-  adminHint.textContent = cloudCleared ? "Scores cleared from the database and this device." : "Local scores cleared, but the database rejected the wipe. Apply the Supabase DELETE policy.";
-  adminHint.classList.toggle("error", !cloudCleared);
-  setSyncText(cloudCleared ? "Database cleared" : "Local scores cleared", false);
-  window.scrollTo({ top: 0, behavior: "smooth" });
-}
-
 function requestDeleteScore(score) {
   if (state.devMode && state.skipDeleteConfirm) return deleteScore(score);
   state.pendingDelete = score;
@@ -505,6 +491,7 @@ function requestDeleteScore(score) {
 }
 
 function openScoreContextMenu(score, x, y) {
+  if (!state.selectedScoreKeys.has(scoreKey(score))) state.selectedScoreKeys = new Set([scoreKey(score)]);
   state.contextScore = score;
   scoreContextMenu.classList.remove("hidden");
   scoreContextMenu.style.left = `${Math.min(x, window.innerWidth - 150)}px`;
@@ -514,6 +501,25 @@ function openScoreContextMenu(score, x, y) {
 function closeScoreContextMenu() {
   scoreContextMenu.classList.add("hidden");
   state.contextScore = null;
+}
+
+function selectedScores() {
+  return Object.values(state.scores).flat().filter((score) => state.selectedScoreKeys.has(scoreKey(score)));
+}
+
+async function deleteSelectedScores() {
+  const scores = selectedScores();
+  if (!scores.length) return closeScoreContextMenu();
+  closeScoreContextMenu();
+  scores.forEach((score) => {
+    state.scores[score.mode || state.mode] = (state.scores[score.mode || state.mode] || []).filter((item) => scoreKey(item) !== scoreKey(score));
+  });
+  saveLocal();
+  renderScores();
+  const results = await Promise.all(scores.map((score) => deleteCloudScore(score)));
+  state.selectedScoreKeys.clear();
+  const allDeleted = results.every(Boolean);
+  setSyncText(allDeleted ? `${scores.length} score${scores.length === 1 ? "" : "s"} deleted everywhere` : `${scores.length} score${scores.length === 1 ? "" : "s"} deleted locally`, false);
 }
 
 function banContextScore() {
@@ -611,7 +617,6 @@ $("versionButton").addEventListener("click", () => {
 });
 $("closeAdminButton").addEventListener("click", () => setPanel(adminPanel, false));
 $("enableDevModeButton").addEventListener("click", enableDevMode);
-$("wipeDatabaseButton").addEventListener("click", wipeDatabase);
 $("turnOffDevModeButton").addEventListener("click", turnOffDevMode);
 adminPassword.addEventListener("input", () => { adminHint.textContent = "Password is hidden while you type."; adminHint.classList.remove("error"); });
 $("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; setPanel(confirmPanel, false); });
@@ -622,6 +627,7 @@ $("saveEditButton").addEventListener("click", saveEditedScore);
 editName.addEventListener("input", () => { editName.value = cleanRunnerName(editName.value); });
 editPoints.addEventListener("input", () => { editPoints.value = editPoints.value.replace(/\D/g, "").slice(0, 6); });
 contextEditButton.addEventListener("click", () => { const score = state.contextScore; closeScoreContextMenu(); if (score) openEditScore(score); });
+contextDeleteButton.addEventListener("click", deleteSelectedScores);
 contextBanButton.addEventListener("click", banContextScore);
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
