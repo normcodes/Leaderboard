@@ -115,6 +115,7 @@
         <input id="defaultName" type="text" maxlength="30" autocomplete="off" placeholder="Custom" />
       </div>
       <label class="check-row dev-only-setting hidden" id="skipDeleteSetting" for="skipDeleteConfirm"><input id="skipDeleteConfirm" type="checkbox" /><span><strong>Skip delete confirmations</strong><small>Turn this off to show the confirmation again.</small></span></label>
+      <div class="dev-only-setting hidden" id="clearScoresSetting"><button class="secondary-button clear-button" id="clearDatabaseButton" type="button">Clear all scores</button><p class="field-hint">Uses the Supabase wipe_leaderboard function.</p></div>
       <p class="device-note">Device settings are saved only on this device.</p>
     </div>
   </div>
@@ -127,7 +128,7 @@
     </div>
   </div>
   <div class="custom-panel hidden" id="confirmPanel" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
-    <div class="custom-card compact-card"><p class="eyebrow">CONFIRM ACTION</p><h2 id="confirmTitle">Delete this score?</h2><p class="settings-copy" id="confirmCopy">This cannot be undone.</p><label class="check-row" for="confirmNever"><input id="confirmNever" type="checkbox" /><span>Never show this again</span></label><div class="dialog-actions"><button class="secondary-button" id="cancelConfirmButton" type="button">Cancel</button><button class="primary-button" id="acceptConfirmButton" type="button">Delete</button></div></div>
+    <div class="custom-card compact-card"><p class="eyebrow">CONFIRM ACTION</p><h2 id="confirmTitle">Delete this score?</h2><p class="settings-copy" id="confirmCopy">This cannot be undone.</p><label class="check-row" id="confirmNeverRow" for="confirmNever"><input id="confirmNever" type="checkbox" /><span>Never show this again</span></label><div class="dialog-actions"><button class="secondary-button" id="cancelConfirmButton" type="button">Cancel</button><button class="primary-button" id="acceptConfirmButton" type="button">Delete</button></div></div>
   </div>
   <div class="custom-panel hidden" id="editPanel" role="dialog" aria-modal="true" aria-labelledby="editTitle">
     <div class="custom-card"><button class="close-button" id="closeEditButton" type="button" aria-label="Close editor">×</button><p class="eyebrow">EDIT SCORE</p><h2 id="editTitle">Edit run</h2><label for="editName">Name</label><input id="editName" type="text" maxlength="30" /><label for="editPoints">Points</label><input id="editPoints" type="text" inputmode="numeric" maxlength="6" /><label for="editUnit">Unit</label><select id="editUnit"></select><p class="field-hint" id="editHint">Right-click a runner name to edit.</p><div class="dialog-actions"><button class="secondary-button" id="cancelEditButton" type="button">Cancel</button><button class="primary-button" id="saveEditButton" type="button">Save changes</button></div></div>

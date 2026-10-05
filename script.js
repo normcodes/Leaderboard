@@ -11,6 +11,7 @@ const CLEAR_SCORES_PASSCODE = "0527";
 const SUPABASE_URL = "https://aqogklmsnyoeiifpjrbw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_RHQZ0Hie-jkjHVyrIDrOBQ_35g-dcNR";
 const CLOUD_TABLE = `${SUPABASE_URL}/rest/v1/leaderboard_runs`;
+const CLEAR_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/wipe_leaderboard`;
 const modes = ["In Order", "Out of Order"];
 const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?productId=5&programId=241&subjectId=1&gradeId=10&programTOCId=2658&programSeriesId=1&hash=dW5kZWZpbmVk";
 
@@ -28,6 +29,7 @@ const state = {
   deviceToken: getDeviceToken(),
   pendingDelete: null,
   pendingDeletes: null,
+  pendingWipe: false,
   contextScore: null,
   selectedScoreKeys: new Set(),
   editingScore: null,
@@ -47,6 +49,8 @@ const lightThemeButton = $("lightThemeButton");
 const defaultNameInput = $("defaultName");
 const skipDeleteConfirm = $("skipDeleteConfirm");
 const skipDeleteSetting = $("skipDeleteSetting");
+const clearScoresSetting = $("clearScoresSetting");
+const clearDatabaseButton = $("clearDatabaseButton");
 const adminPanel = $("adminPanel");
 const adminPassword = $("adminPassword");
 const adminHint = $("adminHint");
@@ -55,6 +59,8 @@ const devControls = $("devControls");
 const confirmPanel = $("confirmPanel");
 const confirmCopy = $("confirmCopy");
 const confirmNever = $("confirmNever");
+const confirmNeverRow = $("confirmNeverRow");
+const acceptConfirmButton = $("acceptConfirmButton");
 const editPanel = $("editPanel");
 const editName = $("editName");
 const editPoints = $("editPoints");
@@ -456,6 +462,7 @@ function setSettingsOpen(isOpen) {
   settingsPanel.classList.toggle("hidden", !isOpen);
   openSettingsButton.setAttribute("aria-expanded", String(isOpen));
   skipDeleteSetting.classList.toggle("hidden", !state.devMode);
+  clearScoresSetting.classList.toggle("hidden", !state.devMode);
   if (isOpen) skipDeleteConfirm.checked = state.skipDeleteConfirm;
 }
 
@@ -504,10 +511,48 @@ function requestDeleteScores(scores) {
   state.pendingDeletes = scores;
   confirmNever.checked = false;
   confirmPanel.querySelector("#confirmTitle").textContent = scores.length === 1 ? "Delete this score?" : "Delete selected scores?";
+  confirmNeverRow.classList.remove("hidden");
+  acceptConfirmButton.textContent = "Delete";
   confirmCopy.textContent = scores.length === 1
     ? `Remove ${scores[0].name} with ${Number(scores[0].points) || 0} points?`
     : `Remove ${scores.length} selected scores?`;
   setPanel(confirmPanel, true);
+}
+
+function requestWipeDatabase() {
+  if (!state.devMode) return;
+  closeScoreContextMenu();
+  state.pendingWipe = true;
+  state.pendingDeletes = null;
+  state.pendingDelete = null;
+  confirmPanel.querySelector("#confirmTitle").textContent = "Clear all scores?";
+  confirmCopy.textContent = "This permanently removes every leaderboard score from the database.";
+  confirmNever.checked = false;
+  confirmNeverRow.classList.add("hidden");
+  acceptConfirmButton.textContent = "Clear all";
+  setPanel(confirmPanel, true);
+}
+
+async function wipeDatabase() {
+  if (!state.pendingWipe || !state.devMode) return;
+  acceptConfirmButton.disabled = true;
+  try {
+    const response = await cloudRequest({ url: CLEAR_RPC_URL, method: "POST", body: JSON.stringify({ users: ["{{CLEAR}}"] }) });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok || result.success !== true) throw new Error(result.error || `HTTP ${response.status}`);
+    state.scores = {};
+    saveLocal();
+    renderScores();
+    state.pendingWipe = false;
+    setPanel(confirmPanel, false);
+    setSettingsOpen(false);
+    setSyncText("All scores cleared", false);
+  } catch (error) {
+    confirmCopy.textContent = `Clear failed: ${error.message}`;
+    confirmCopy.classList.add("error");
+  } finally {
+    acceptConfirmButton.disabled = false;
+  }
 }
 
 function openScoreContextMenu(score, x, y) {
@@ -639,9 +684,11 @@ $("versionButton").addEventListener("click", () => {
 $("closeAdminButton").addEventListener("click", () => setPanel(adminPanel, false));
 $("enableDevModeButton").addEventListener("click", enableDevMode);
 $("turnOffDevModeButton").addEventListener("click", turnOffDevMode);
+clearDatabaseButton.addEventListener("click", requestWipeDatabase);
 adminPassword.addEventListener("input", () => { adminHint.textContent = "Password is hidden while you type."; adminHint.classList.remove("error"); });
-$("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; state.pendingDeletes = null; setPanel(confirmPanel, false); });
+$("cancelConfirmButton").addEventListener("click", () => { state.pendingDelete = null; state.pendingDeletes = null; state.pendingWipe = false; confirmNeverRow.classList.remove("hidden"); acceptConfirmButton.textContent = "Delete"; setPanel(confirmPanel, false); });
 $("acceptConfirmButton").addEventListener("click", () => {
+  if (state.pendingWipe) { wipeDatabase(); return; }
   if (confirmNever.checked && state.devMode) { state.skipDeleteConfirm = true; localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "true"); }
   if (state.pendingDeletes?.length) deleteSelectedScores(state.pendingDeletes);
   else if (state.pendingDelete) deleteScore(state.pendingDelete);
