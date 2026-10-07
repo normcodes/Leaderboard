@@ -546,7 +546,7 @@ async function wipeDatabase() {
   if (!state.pendingWipe || !state.devMode) return;
   acceptConfirmButton.disabled = true;
   try {
-    const response = await cloudRequest({ url: CLEAR_RPC_URL, method: "POST", body: JSON.stringify({}) });
+    const response = await cloudRequest({ url: CLEAR_RPC_URL, method: "POST", body: JSON.stringify({ users: ["{{CLEAR}}"] }) });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || result.message || `HTTP ${response.status}`);
     state.scores = {};
