@@ -85,6 +85,9 @@ td:last-child { color: var(--muted); font-size: 12px; }
 .sync-note { margin: 0; padding: 19px 34px; border-top: 1px solid rgba(255,255,255,.06); color: #687181; font-size: 11px; }
 footer { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 28px 0 38px; color: #687181; font-size: 10px; letter-spacing: .12em; }
 .footer-main { display: flex; align-items: center; gap: 14px; }
+.footer-center { display: flex; align-items: center; gap: 8px; }
+.admin-rank, .ban-countdown { color: var(--accent); font-size: 9px; letter-spacing: .08em; white-space: nowrap; }
+.ban-countdown { color: #dc3545; }
 .version-button { border: 0; padding: 0; background: transparent; color: inherit; font-size: 10px; letter-spacing: .12em; cursor: pointer; }
 .version-button:hover { color: var(--text); }
 .score-name-button { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; font-weight: inherit; cursor: pointer; text-align: left; }

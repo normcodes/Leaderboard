@@ -3,15 +3,21 @@ const THEME_KEY = "sadlier-leaderboard-theme";
 const DEFAULT_NAME_KEY = "sadlier-leaderboard-default-name";
 const SKIP_DELETE_CONFIRM_KEY = "sadlier-leaderboard-skip-delete-confirm";
 const BANNED_NAMES_KEY = "sadlier-leaderboard-banned-names";
+const BANNED_DEVICES_KEY = "sadlier-leaderboard-banned-devices";
 const DEVICE_TOKEN_KEY = "sadlier-leaderboard-device-token";
 const ACTIVE_RUN_KEY = "sadlier-leaderboard-active-run";
 const RUN_TIMEOUT_MS = 15 * 60 * 1000;
 const SYNC_CHANNEL = "sadlier-leaderboard-sync";
 const CLEAR_SCORES_PASSCODE = "0527";
+const HIGH_ADMIN_PASSCODE = "Password1$";
+const OWNER_PASSCODE = "Password1$A";
+const BAN_DURATION_MS = 24 * 60 * 60 * 1000;
 const SUPABASE_URL = "https://aqogklmsnyoeiifpjrbw.supabase.co";
 const SUPABASE_KEY = "sb_publishable_RHQZ0Hie-jkjHVyrIDrOBQ_35g-dcNR";
 const CLOUD_TABLE = `${SUPABASE_URL}/rest/v1/leaderboard_runs`;
 const CLEAR_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/wipe_leaderboard`;
+const BAN_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/ban_device`;
+const DEVICE_BAN_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/get_device_ban`;
 const modes = ["In Order", "Out of Order"];
 const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?productId=5&programId=241&subjectId=1&gradeId=10&programTOCId=2658&programSeriesId=1&hash=dW5kZWZpbmVk";
 
@@ -25,7 +31,9 @@ const state = {
   defaultName: localStorage.getItem(DEFAULT_NAME_KEY) || "",
   skipDeleteConfirm: localStorage.getItem(SKIP_DELETE_CONFIRM_KEY) === "true",
   bannedNames: loadBannedNames(),
+  bannedDevices: loadBannedDevices(),
   devMode: false,
+  adminRank: "",
   deviceToken: getDeviceToken(),
   pendingDelete: null,
   pendingDeletes: null,
@@ -35,6 +43,7 @@ const state = {
   editingScore: null,
   versionClicks: 0,
   versionClickTimer: null,
+  banCountdownTimer: null,
   timer: { startedAt: null, elapsed: 0, interval: null, running: false, token: null, timedOut: false },
 };
 
@@ -88,6 +97,8 @@ const startTimerButton = $("startTimerButton");
 const stopTimerButton = $("stopTimerButton");
 const nameHint = $("nameHint");
 const pointsHint = $("pointsHint");
+const adminRank = $("adminRank");
+const banCountdown = $("banCountdown");
 
 for (let unit = 1; unit <= 15; unit += 1) {
   runUnit.add(new Option(`Unit ${unit}`, String(unit)));
@@ -106,6 +117,43 @@ function getDeviceToken() {
 
 function loadBannedNames() {
   try { return JSON.parse(localStorage.getItem(BANNED_NAMES_KEY)) || []; } catch (_) { return []; }
+}
+
+function loadBannedDevices() {
+  try { return JSON.parse(localStorage.getItem(BANNED_DEVICES_KEY)) || {}; } catch (_) { return {}; }
+}
+
+function hasPermission(permission) {
+  return state.devMode && (state.adminRank === "Owner" || (state.adminRank === "High Admin" && permission !== "edit") || (state.adminRank === "Basic Admin" && permission === "delete"));
+}
+
+function activeDeviceBan() {
+  const expiresAt = Number(state.bannedDevices[state.deviceToken] || 0);
+  if (!expiresAt) return 0;
+  if (expiresAt <= Date.now()) {
+    delete state.bannedDevices[state.deviceToken];
+    localStorage.setItem(BANNED_DEVICES_KEY, JSON.stringify(state.bannedDevices));
+    return 0;
+  }
+  return expiresAt;
+}
+
+function formatCountdown(milliseconds) {
+  const total = Math.max(0, Math.ceil(milliseconds / 1000));
+  const hours = String(Math.floor(total / 3600)).padStart(2, "0");
+  const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, "0");
+  const seconds = String(total % 60).padStart(2, "0");
+  return `${hours}:${minutes}:${seconds}`;
+}
+
+function updateBanCountdown() {
+  const expiresAt = activeDeviceBan();
+  banCountdown.textContent = expiresAt ? `Banned · ${formatCountdown(expiresAt - Date.now())}` : "";
+}
+
+function updateAdminRank() {
+  adminRank.textContent = state.devMode && state.adminRank ? `· ${state.adminRank}` : "";
+  updateBanCountdown();
 }
 
 let channel;
@@ -172,7 +220,7 @@ async function pullCloudScores() {
     const cloudScores = {};
     rows.forEach((row) => {
       if (!cloudScores[row.mode]) cloudScores[row.mode] = [];
-      cloudScores[row.mode].push({ id: row.id, mode: row.mode, name: row.name, points: row.points, unit: String(row.unit), time: row.time_ms, date: row.date });
+      cloudScores[row.mode].push({ id: row.id, mode: row.mode, name: row.name, points: row.points, unit: String(row.unit), time: row.time_ms, date: row.date, deviceToken: row.device_token || "" });
     });
     state.scores = cloudScores;
     saveLocal();
@@ -185,11 +233,15 @@ async function pullCloudScores() {
 
 async function pushScore(score, mode) {
   try {
-    const response = await cloudRequest({
+    const payload = { mode, name: score.name, points: score.points, unit: Number(score.unit), time_ms: score.time, date: score.date, device_token: score.deviceToken };
+    let response = await cloudRequest({
       method: "POST",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify({ mode, name: score.name, points: score.points, unit: Number(score.unit), time_ms: score.time, date: score.date }),
+      body: JSON.stringify(payload),
     });
+    if (!response.ok) {
+      response = await cloudRequest({ method: "POST", headers: { Prefer: "return=minimal" }, body: JSON.stringify({ ...payload, device_token: undefined }) });
+    }
     if (!response.ok) {
       setSyncText("Cloud table needs setup", false);
       return;
@@ -230,6 +282,26 @@ async function deleteCloudScoresByNames(names) {
     const response = await cloudRequest({ url: CLEAR_RPC_URL, method: "POST", body: JSON.stringify({ users: uniqueNames }) });
     const result = await response.json().catch(() => ({}));
     return response.ok && result.success === true;
+  } catch (_) { return false; }
+}
+
+async function syncRemoteDeviceBan() {
+  try {
+    const response = await cloudRequest({ url: DEVICE_BAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: state.deviceToken }) });
+    if (!response.ok) return;
+    const expiresAt = await response.json();
+    if (expiresAt) {
+      state.bannedDevices[state.deviceToken] = new Date(expiresAt).getTime();
+      localStorage.setItem(BANNED_DEVICES_KEY, JSON.stringify(state.bannedDevices));
+      updateBanCountdown();
+    }
+  } catch (_) { /* local device ban remains available if the RPC is offline */ }
+}
+
+async function banDeviceRemotely(deviceToken) {
+  try {
+    const response = await cloudRequest({ url: BAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: deviceToken, p_duration_minutes: 1440 }) });
+    return response.ok;
   } catch (_) { return false; }
 }
 
@@ -373,6 +445,12 @@ function startTimer() {
     return;
   }
   localStorage.removeItem(ACTIVE_RUN_KEY);
+  if (activeDeviceBan() && !state.devMode) {
+    nameHint.textContent = `This device is banned for ${formatCountdown(activeDeviceBan() - Date.now())}.`;
+    nameHint.classList.add("error");
+    updateBanCountdown();
+    return;
+  }
   const name = runnerName.value.trim().replace(/ +/g, " ");
   if (state.bannedNames.includes(name.toLowerCase())) {
     nameHint.textContent = "This name is banned from entering scores on this device.";
@@ -453,6 +531,7 @@ function saveRun() {
     unit: runUnit.value,
     time: Math.max(1, Math.round(state.timer.elapsed)),
     date: new Date().toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
+    deviceToken: state.deviceToken,
   };
   state.scores[state.mode] = sortScores([...(state.scores[state.mode] || []), score]).slice(0, 100);
   saveLocal();
@@ -470,7 +549,7 @@ function setSettingsOpen(isOpen) {
   settingsPanel.classList.toggle("hidden", !isOpen);
   openSettingsButton.setAttribute("aria-expanded", String(isOpen));
   skipDeleteSetting.classList.toggle("hidden", !state.devMode);
-  clearScoresSetting.classList.toggle("hidden", !state.devMode);
+  clearScoresSetting.classList.toggle("hidden", !hasPermission("clear"));
   if (isOpen) skipDeleteConfirm.checked = state.skipDeleteConfirm;
 }
 
@@ -487,23 +566,33 @@ function openAdminUnlock() {
 }
 
 function enableDevMode() {
-  if (adminPassword.value !== CLEAR_SCORES_PASSCODE) {
+  const ranks = {
+    [CLEAR_SCORES_PASSCODE]: "Basic Admin",
+    [HIGH_ADMIN_PASSCODE]: "High Admin",
+    [OWNER_PASSCODE]: "Owner",
+  };
+  const rank = ranks[adminPassword.value];
+  if (!rank) {
     adminHint.textContent = "Incorrect password.";
     adminHint.classList.add("error");
     adminPassword.focus();
     return;
   }
   state.devMode = true;
+  state.adminRank = rank;
   setPanel(adminPanel, false);
   setSettingsOpen(false);
-  setSyncText("Dev Mode enabled for this tab", false);
+  updateAdminRank();
+  setSyncText(`${rank} enabled for this tab`, false);
 }
 
 function turnOffDevMode() {
   state.devMode = false;
+  state.adminRank = "";
   state.skipDeleteConfirm = false;
   localStorage.setItem(SKIP_DELETE_CONFIRM_KEY, "false");
   closeScoreContextMenu();
+  updateAdminRank();
   setPanel(adminPanel, false);
   setSettingsOpen(false);
   setSyncText("Dev Mode off", false);
@@ -515,6 +604,7 @@ function requestDeleteScore(score) {
 
 function requestDeleteScores(scores) {
   if (!scores.length) return closeScoreContextMenu();
+  if (!hasPermission("delete") || (scores.length > 1 && state.adminRank !== "Owner")) return closeScoreContextMenu();
   closeScoreContextMenu();
   if (state.devMode && state.skipDeleteConfirm) return deleteSelectedScores(scores);
   state.pendingDeletes = scores;
@@ -529,7 +619,7 @@ function requestDeleteScores(scores) {
 }
 
 function requestWipeDatabase() {
-  if (!state.devMode) return;
+  if (!hasPermission("clear")) return;
   closeScoreContextMenu();
   state.pendingWipe = true;
   state.pendingDeletes = null;
@@ -565,8 +655,12 @@ async function wipeDatabase() {
 }
 
 function openScoreContextMenu(score, x, y) {
+  if (!state.devMode) return;
   if (!state.selectedScoreKeys.has(scoreKey(score))) state.selectedScoreKeys = new Set([scoreKey(score)]);
   state.contextScore = score;
+  contextEditButton.classList.toggle("hidden", !hasPermission("edit"));
+  contextDeleteButton.classList.toggle("hidden", !hasPermission("delete"));
+  contextBanButton.classList.toggle("hidden", !hasPermission("ban"));
   scoreContextMenu.classList.remove("hidden");
   scoreContextMenu.style.left = `${Math.min(x, window.innerWidth - 150)}px`;
   scoreContextMenu.style.top = `${Math.min(y, window.innerHeight - 100)}px`;
@@ -595,14 +689,18 @@ async function deleteSelectedScores(scores = selectedScores()) {
   setSyncText(cloudDeleted ? `${scores.length} score${scores.length === 1 ? "" : "s"} deleted everywhere` : `${scores.length} score${scores.length === 1 ? "" : "s"} deleted locally`, false);
 }
 
-function banContextScore() {
+async function banContextScore() {
+  if (!hasPermission("ban")) return closeScoreContextMenu();
   const score = state.contextScore;
   if (!score) return;
-  const normalized = score.name.toLowerCase();
-  if (!state.bannedNames.includes(normalized)) state.bannedNames.push(normalized);
-  localStorage.setItem(BANNED_NAMES_KEY, JSON.stringify(state.bannedNames));
+  const targets = state.adminRank === "Owner" ? selectedScores() : [score];
+  const expiresAt = Date.now() + BAN_DURATION_MS;
+  targets.forEach((target) => { state.bannedDevices[target.deviceToken || state.deviceToken] = expiresAt; });
+  localStorage.setItem(BANNED_DEVICES_KEY, JSON.stringify(state.bannedDevices));
+  const remoteResults = await Promise.all(targets.map((target) => banDeviceRemotely(target.deviceToken || state.deviceToken)));
+  updateBanCountdown();
   closeScoreContextMenu();
-  setSyncText(`${score.name} banned on this device`, false);
+  setSyncText(remoteResults.every(Boolean) ? `${targets.length} device${targets.length === 1 ? "" : "s"} banned for 24 hours` : "Device ban saved locally; run the SQL ban migration to sync it", false);
 }
 
 async function deleteScore(score) {
@@ -706,7 +804,7 @@ $("cancelEditButton").addEventListener("click", () => setPanel(editPanel, false)
 $("saveEditButton").addEventListener("click", saveEditedScore);
 editName.addEventListener("input", () => { editName.value = cleanRunnerName(editName.value); });
 editPoints.addEventListener("input", () => { editPoints.value = editPoints.value.replace(/\D/g, "").slice(0, 6); });
-contextEditButton.addEventListener("click", () => { const score = state.contextScore; closeScoreContextMenu(); if (score) openEditScore(score); });
+contextEditButton.addEventListener("click", () => { const score = state.contextScore; closeScoreContextMenu(); if (score && hasPermission("edit")) openEditScore(score); });
 contextDeleteButton.addEventListener("click", () => requestDeleteScores(selectedScores()));
 contextBanButton.addEventListener("click", banContextScore);
 
@@ -759,4 +857,7 @@ defaultNameInput.value = state.defaultName;
 skipDeleteConfirm.checked = state.skipDeleteConfirm;
 editUnit.value = "1";
 applyTheme(state.theme);
+updateAdminRank();
+state.banCountdownTimer = window.setInterval(updateBanCountdown, 1000);
+syncRemoteDeviceBan();
 pullCloudScores();
