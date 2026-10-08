@@ -34,17 +34,26 @@ security definer
 set search_path = public
 as $$
 declare
-  expires_at timestamptz := now() + make_interval(mins => greatest(1, p_duration_minutes));
+  requested_until timestamptz := now() + make_interval(mins => greatest(1, p_duration_minutes));
+  expires_at timestamptz;
 begin
   if p_device_token is null or length(trim(p_device_token)) < 16 then
     raise exception 'A valid device token is required.';
   end if;
 
   insert into public.leaderboard_banned_devices(device_token, banned_until, banned_by)
-  values (trim(p_device_token), expires_at, 'dev-mode')
+  values (trim(p_device_token), requested_until, 'dev-mode')
   on conflict (device_token) do update
-    set banned_until = excluded.banned_until,
-        banned_by = excluded.banned_by;
+    set banned_until = case
+      when public.leaderboard_banned_devices.banned_until > now()
+        then public.leaderboard_banned_devices.banned_until
+      else excluded.banned_until
+    end,
+    banned_by = excluded.banned_by;
+
+  select banned_until into expires_at
+  from public.leaderboard_banned_devices
+  where device_token = trim(p_device_token);
 
   return expires_at;
 end;

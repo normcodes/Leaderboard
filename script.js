@@ -310,6 +310,15 @@ async function banDeviceRemotely(deviceToken, durationMinutes) {
   } catch (_) { return false; }
 }
 
+async function getRemoteDeviceBan(deviceToken) {
+  try {
+    const response = await cloudRequest({ url: DEVICE_BAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: deviceToken }) });
+    if (!response.ok) return 0;
+    const value = await response.json();
+    return value ? new Date(value).getTime() : 0;
+  } catch (_) { return 0; }
+}
+
 async function unbanDeviceRemotely(deviceToken) {
   try {
     const response = await cloudRequest({ url: UNBAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: deviceToken }) });
@@ -723,13 +732,30 @@ async function confirmBan() {
   }
   const targetKeys = JSON.parse(banPanel.dataset.targetKeys || "[]");
   const targets = Object.values(state.scores).flat().filter((score) => targetKeys.includes(scoreKey(score)));
-  const expiresAt = Date.now() + hours * 60 * 60 * 1000;
-  targets.forEach((target) => { state.bannedDevices[target.deviceToken || state.deviceToken] = expiresAt; });
+  const durationMs = hours * 60 * 60 * 1000;
+  const now = Date.now();
+  const remoteExpiries = await Promise.all(targets.map((target) => getRemoteDeviceBan(target.deviceToken || state.deviceToken)));
+  const expiries = targets.map((target, index) => {
+    const token = target.deviceToken || state.deviceToken;
+    const localExpiry = Number(state.bannedDevices[token] || 0);
+    const existingExpiry = Math.max(localExpiry, remoteExpiries[index] || 0);
+    const expiry = existingExpiry > now ? existingExpiry : now + durationMs;
+    state.bannedDevices[token] = expiry;
+    return { token, expiry, alreadyBanned: existingExpiry > now };
+  });
   localStorage.setItem(BANNED_DEVICES_KEY, JSON.stringify(state.bannedDevices));
-  const remoteResults = await Promise.all(targets.map((target) => banDeviceRemotely(target.deviceToken || state.deviceToken, hours * 60)));
+  const remoteResults = await Promise.all(expiries.map((entry) => entry.alreadyBanned || banDeviceRemotely(entry.token, hours * 60)));
+  const names = [...new Set(targets.map((target) => target.name))];
+  Object.keys(state.scores).forEach((mode) => { state.scores[mode] = (state.scores[mode] || []).filter((score) => !names.includes(score.name)); });
+  saveLocal();
+  renderScores();
+  const scoresRemoved = await deleteCloudScoresByNames(names);
   updateBanCountdown();
   setPanel(banPanel, false);
-  setSyncText(remoteResults.every(Boolean) ? `${targets.length} device${targets.length === 1 ? "" : "s"} banned for ${hours} hour${hours === 1 ? "" : "s"}` : "Device ban saved locally; run the SQL ban migration to sync it", false);
+  const keptExisting = expiries.some((entry) => entry.alreadyBanned);
+  setSyncText(remoteResults.every(Boolean) && scoresRemoved
+    ? `${targets.length} device${targets.length === 1 ? "" : "s"} banned; scores removed${keptExisting ? " (existing timer kept)" : ` for ${hours} hour${hours === 1 ? "" : "s"}`}`
+    : "Ban saved locally; run the device-ban SQL migrations to sync it", false);
 }
 
 async function unbanContextScore() {
