@@ -17,6 +17,7 @@ const SUPABASE_KEY = "sb_publishable_RHQZ0Hie-jkjHVyrIDrOBQ_35g-dcNR";
 const CLOUD_TABLE = `${SUPABASE_URL}/rest/v1/leaderboard_runs`;
 const CLEAR_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/wipe_leaderboard`;
 const BAN_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/ban_device`;
+const UNBAN_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/unban_device`;
 const DEVICE_BAN_RPC_URL = `${SUPABASE_URL}/rest/v1/rpc/get_device_ban`;
 const modes = ["In Order", "Out of Order"];
 const SADLIER_URL = "https://www.sadlierconnect.com/anonymous/product/vw?productId=5&programId=241&subjectId=1&gradeId=10&programTOCId=2658&programSeriesId=1&hash=dW5kZWZpbmVk";
@@ -79,6 +80,10 @@ const scoreContextMenu = $("scoreContextMenu");
 const contextEditButton = $("contextEditButton");
 const contextDeleteButton = $("contextDeleteButton");
 const contextBanButton = $("contextBanButton");
+const contextUnbanButton = $("contextUnbanButton");
+const banPanel = $("banPanel");
+const banDurationInput = $("banDuration");
+const banCopy = $("banCopy");
 const runnerName = $("runnerName");
 const runMode = $("runMode");
 const runUnit = $("runUnit");
@@ -298,9 +303,16 @@ async function syncRemoteDeviceBan() {
   } catch (_) { /* local device ban remains available if the RPC is offline */ }
 }
 
-async function banDeviceRemotely(deviceToken) {
+async function banDeviceRemotely(deviceToken, durationMinutes) {
   try {
-    const response = await cloudRequest({ url: BAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: deviceToken, p_duration_minutes: 1440 }) });
+    const response = await cloudRequest({ url: BAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: deviceToken, p_duration_minutes: durationMinutes }) });
+    return response.ok;
+  } catch (_) { return false; }
+}
+
+async function unbanDeviceRemotely(deviceToken) {
+  try {
+    const response = await cloudRequest({ url: UNBAN_RPC_URL, method: "POST", body: JSON.stringify({ p_device_token: deviceToken }) });
     return response.ok;
   } catch (_) { return false; }
 }
@@ -661,6 +673,7 @@ function openScoreContextMenu(score, x, y) {
   contextEditButton.classList.toggle("hidden", !hasPermission("edit"));
   contextDeleteButton.classList.toggle("hidden", !hasPermission("delete"));
   contextBanButton.classList.toggle("hidden", !hasPermission("ban"));
+  contextUnbanButton.classList.toggle("hidden", !hasPermission("ban"));
   scoreContextMenu.classList.remove("hidden");
   scoreContextMenu.style.left = `${Math.min(x, window.innerWidth - 150)}px`;
   scoreContextMenu.style.top = `${Math.min(y, window.innerHeight - 100)}px`;
@@ -689,18 +702,47 @@ async function deleteSelectedScores(scores = selectedScores()) {
   setSyncText(cloudDeleted ? `${scores.length} score${scores.length === 1 ? "" : "s"} deleted everywhere` : `${scores.length} score${scores.length === 1 ? "" : "s"} deleted locally`, false);
 }
 
-async function banContextScore() {
+function banContextScore() {
   if (!hasPermission("ban")) return closeScoreContextMenu();
   const score = state.contextScore;
   if (!score) return;
   const targets = state.adminRank === "Owner" ? selectedScores() : [score];
-  const expiresAt = Date.now() + BAN_DURATION_MS;
+  banPanel.dataset.targetKeys = JSON.stringify(targets.map(scoreKey));
+  banCopy.textContent = `Choose how long to block ${targets.length} device${targets.length === 1 ? "" : "s"}.`;
+  banDurationInput.value = "24";
+  closeScoreContextMenu();
+  setPanel(banPanel, true);
+  banDurationInput.focus();
+}
+
+async function confirmBan() {
+  const hours = Number.parseInt(banDurationInput.value, 10);
+  if (!Number.isInteger(hours) || hours < 1 || hours > 8760) {
+    banCopy.textContent = "Enter a duration from 1 to 8,760 hours.";
+    return;
+  }
+  const targetKeys = JSON.parse(banPanel.dataset.targetKeys || "[]");
+  const targets = Object.values(state.scores).flat().filter((score) => targetKeys.includes(scoreKey(score)));
+  const expiresAt = Date.now() + hours * 60 * 60 * 1000;
   targets.forEach((target) => { state.bannedDevices[target.deviceToken || state.deviceToken] = expiresAt; });
   localStorage.setItem(BANNED_DEVICES_KEY, JSON.stringify(state.bannedDevices));
-  const remoteResults = await Promise.all(targets.map((target) => banDeviceRemotely(target.deviceToken || state.deviceToken)));
+  const remoteResults = await Promise.all(targets.map((target) => banDeviceRemotely(target.deviceToken || state.deviceToken, hours * 60)));
+  updateBanCountdown();
+  setPanel(banPanel, false);
+  setSyncText(remoteResults.every(Boolean) ? `${targets.length} device${targets.length === 1 ? "" : "s"} banned for ${hours} hour${hours === 1 ? "" : "s"}` : "Device ban saved locally; run the SQL ban migration to sync it", false);
+}
+
+async function unbanContextScore() {
+  if (!hasPermission("ban")) return closeScoreContextMenu();
+  const score = state.contextScore;
+  if (!score) return;
+  const targets = state.adminRank === "Owner" ? selectedScores() : [score];
+  const remoteResults = await Promise.all(targets.map((target) => unbanDeviceRemotely(target.deviceToken || state.deviceToken)));
+  targets.forEach((target) => { delete state.bannedDevices[target.deviceToken || state.deviceToken]; });
+  localStorage.setItem(BANNED_DEVICES_KEY, JSON.stringify(state.bannedDevices));
   updateBanCountdown();
   closeScoreContextMenu();
-  setSyncText(remoteResults.every(Boolean) ? `${targets.length} device${targets.length === 1 ? "" : "s"} banned for 24 hours` : "Device ban saved locally; run the SQL ban migration to sync it", false);
+  setSyncText(remoteResults.every(Boolean) ? `${targets.length} device${targets.length === 1 ? "" : "s"} unbanned` : "Device unbanned locally; run the SQL ban migration to sync it", false);
 }
 
 async function deleteScore(score) {
@@ -807,12 +849,17 @@ editPoints.addEventListener("input", () => { editPoints.value = editPoints.value
 contextEditButton.addEventListener("click", () => { const score = state.contextScore; closeScoreContextMenu(); if (score && hasPermission("edit")) openEditScore(score); });
 contextDeleteButton.addEventListener("click", () => requestDeleteScores(selectedScores()));
 contextBanButton.addEventListener("click", banContextScore);
+contextUnbanButton.addEventListener("click", unbanContextScore);
+$("closeBanButton").addEventListener("click", () => setPanel(banPanel, false));
+$("cancelBanButton").addEventListener("click", () => setPanel(banPanel, false));
+$("confirmBanButton").addEventListener("click", confirmBan);
 
 timerModal.addEventListener("click", (event) => { if (event.target === timerModal) closeTimer(); });
 settingsPanel.addEventListener("click", (event) => { if (event.target === settingsPanel) setSettingsOpen(false); });
 adminPanel.addEventListener("click", (event) => { if (event.target === adminPanel) setPanel(adminPanel, false); });
 confirmPanel.addEventListener("click", (event) => { if (event.target === confirmPanel) setPanel(confirmPanel, false); });
 editPanel.addEventListener("click", (event) => { if (event.target === editPanel) setPanel(editPanel, false); });
+banPanel.addEventListener("click", (event) => { if (event.target === banPanel) setPanel(banPanel, false); });
 document.addEventListener("click", (event) => { if (!scoreContextMenu.contains(event.target)) closeScoreContextMenu(); });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
@@ -821,6 +868,7 @@ document.addEventListener("keydown", (event) => {
     else if (!adminPanel.classList.contains("hidden")) setPanel(adminPanel, false);
     else if (!confirmPanel.classList.contains("hidden")) setPanel(confirmPanel, false);
     else if (!editPanel.classList.contains("hidden")) setPanel(editPanel, false);
+    else if (!banPanel.classList.contains("hidden")) setPanel(banPanel, false);
     closeScoreContextMenu();
   }
 });
