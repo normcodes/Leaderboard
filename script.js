@@ -715,7 +715,13 @@ function banContextScore() {
   if (!hasPermission("ban")) return closeScoreContextMenu();
   const score = state.contextScore;
   if (!score) return;
-  const targets = state.adminRank === "Owner" ? selectedScores() : [score];
+  const candidates = state.adminRank === "Owner" ? selectedScores() : [score];
+  const targets = candidates.filter((target) => target.deviceToken && target.deviceToken !== state.deviceToken);
+  if (!targets.length) {
+    closeScoreContextMenu();
+    setSyncText("You cannot ban your own device; this score has no separate device token", false);
+    return;
+  }
   banPanel.dataset.targetKeys = JSON.stringify(targets.map(scoreKey));
   banCopy.textContent = `Choose how long to block ${targets.length} device${targets.length === 1 ? "" : "s"}.`;
   banDurationInput.value = "24";
